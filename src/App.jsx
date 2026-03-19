@@ -350,7 +350,7 @@ export default function App() {
                 </table>
               </div>
             )}
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", textAlign: "center", marginTop: 14, lineHeight: 1.6 }}>
               Fuente: CAFCI (Cámara Argentina de Fondos Comunes de Inversión) — api.cafci.org.ar
               {hasRend ? " · Rendimientos calculados por CAFCI según normas CNV" : " · Datos diarios en formato bulk"}
             </div>
@@ -429,7 +429,7 @@ export default function App() {
           </section>
         )}
 
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.2)", textAlign: "center", padding: "18px", lineHeight: 1.6 }}>
+        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", textAlign: "center", padding: "20px", lineHeight: 1.6 }}>
           Datos indicativos con posible delay. Verificá con tu broker antes de operar. FCI actualiza después de las 18hs (CAFCI).
         </div>
       </main>
