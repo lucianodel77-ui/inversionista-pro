@@ -261,10 +261,10 @@ export default function App() {
             <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: "0.12em", color: "#fff" }}>INVERSIONISTA</span>
             <span style={{ fontSize: 10, fontWeight: 800, background: "linear-gradient(135deg,#4fc3f7,#00e676)", color: "#080c14", padding: "3px 8px", borderRadius: 4 }}>PRO</span>
           </div>
-          <span style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", textTransform: "capitalize" }}>{dateStr}</span>
+          <span style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", textTransform: "capitalize" }}>{dateStr}</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {lastUpdate && <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", background: "rgba(255,255,255,0.04)", padding: "4px 10px", borderRadius: 14 }}>⟳ {lastUpdate.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span>}
+          {lastUpdate && <span style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", background: "rgba(255,255,255,0.06)", padding: "4px 10px", borderRadius: 14 }}>⟳ {lastUpdate.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span>}
           <button onClick={() => setChatOpen(!chatOpen)} style={{ ...S.advBtn, ...(chatOpen ? { background: "linear-gradient(135deg,#4fc3f7,#00e676)", color: "#080c14", borderColor: "transparent" } : {}) }}>
             🧠 Asesor IA {!chatOpen && <span style={S.pulse} />}
           </button>
@@ -283,7 +283,7 @@ export default function App() {
           <section>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
               <h2 style={S.secT}>📊 Fondos Comunes de Inversión
-                {fci?.date && <span style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", marginLeft: 10, fontWeight: 400 }}>Datos al {fci.date}</span>}
+                {fci?.date && <span style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", marginLeft: 10, fontWeight: 400 }}>Datos al {fci.date}</span>}
                 {hasRend && <span style={{ fontSize: 11, color: "#00e676", marginLeft: 10, background: "rgba(0,230,118,0.1)", padding: "2px 10px", borderRadius: 10 }}>Con rendimientos</span>}
               </h2>
               <span style={{ fontSize: 13, color: "rgba(79,195,247,0.7)", background: "rgba(79,195,247,0.06)", padding: "4px 12px", borderRadius: 12 }}>{filtered.length} fondos</span>
@@ -323,14 +323,14 @@ export default function App() {
                       return (
                         <tr key={i} style={S.tr} className="fci-row">
                           <td style={{ ...S.td, maxWidth: 320 }}>
-                            <div style={{ fontSize: 14, fontWeight: 500, color: "rgba(255,255,255,0.9)", lineHeight: 1.3 }}>{f.fondo}</div>
-                            {f.gerente && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>{f.gerente}</div>}
+                            <div style={{ fontSize: 14, fontWeight: 500, color: "#fff", lineHeight: 1.3 }}>{f.fondo}</div>
+                            {f.gerente && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)", marginTop: 2 }}>{f.gerente}</div>}
                           </td>
                           <td style={{ ...S.td, textAlign: "center" }}>
                             <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 8, border: `1px solid ${ti.color}50`, color: ti.color, fontWeight: 700, letterSpacing: "0.03em" }}>{ti.short}</span>
                           </td>
                           <td style={{ ...S.td, textAlign: "center" }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, fontFamily: "var(--mono)", color: f.moneda === "USD" ? "#ffd740" : "rgba(255,255,255,0.5)" }}>{f.moneda}</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, fontFamily: "var(--mono)", color: f.moneda === "USD" ? "#ffd740" : "rgba(255,255,255,0.7)" }}>{f.moneda}</span>
                           </td>
                           {hasRend ? <>
                             <td style={{ ...S.td, textAlign: "right" }}><Pill v={f.rend_diario} sm /></td>
@@ -340,7 +340,7 @@ export default function App() {
                           </> : <>
                             <td style={{ ...S.td, textAlign: "right", fontFamily: "var(--mono)", fontWeight: 600, color: "#fff", fontSize: 14 }}>{fmtNum(parseFloat(f.vcp))}</td>
                           </>}
-                          <td style={{ ...S.td, textAlign: "right", fontFamily: "var(--mono)", color: "rgba(255,255,255,0.45)", fontSize: 13 }}>
+                          <td style={{ ...S.td, textAlign: "right", fontFamily: "var(--mono)", color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
                             {f.patrimonio ? `$${(parseFloat(f.patrimonio) / 1e6).toFixed(0)}M` : "—"}
                           </td>
                         </tr>
@@ -350,7 +350,7 @@ export default function App() {
                 </table>
               </div>
             )}
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", textAlign: "center", marginTop: 14, lineHeight: 1.6 }}>
               Fuente: CAFCI (Cámara Argentina de Fondos Comunes de Inversión) — api.cafci.org.ar
               {hasRend ? " · Rendimientos calculados por CAFCI según normas CNV" : " · Datos diarios en formato bulk"}
             </div>
@@ -364,12 +364,12 @@ export default function App() {
             <div style={S.grid}>
               {dollar ? dollar.map((d, i) => (
                 <div key={i} style={S.card}>
-                  <div style={{ fontSize: 14, color: "rgba(255,255,255,0.55)", fontWeight: 500, marginBottom: 10 }}>{d.nombre}</div>
+                  <div style={{ fontSize: 14, color: "rgba(255,255,255,0.8)", fontWeight: 500, marginBottom: 10 }}>{d.nombre}</div>
                   <div style={{ display: "flex", gap: 14 }}>
                     {d.compra != null && <div><div style={S.lbl}>Compra</div><div style={S.bigNum}>{fmt(d.compra)}</div></div>}
                     <div><div style={S.lbl}>Venta</div><div style={S.bigNum}>{fmt(d.venta)}</div></div>
                   </div>
-                  {d.compra && d.venta && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", marginTop: 6 }}>Spread: {((d.venta - d.compra) / d.compra * 100).toFixed(1)}%</div>}
+                  {d.compra && d.venta && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 6 }}>Spread: {((d.venta - d.compra) / d.compra * 100).toFixed(1)}%</div>}
                 </div>
               )) : Array.from({ length: 6 }).map((_, i) => <div key={i} style={S.card}><Skel w="50%" /><div style={{ marginTop: 10 }}><Skel h={22} /></div></div>)}
             </div>
@@ -383,7 +383,7 @@ export default function App() {
             <div style={S.grid}>
               {Object.values(market.indices).map(x => (
                 <div key={x.name} style={S.card}>
-                  <div style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", fontWeight: 500, marginBottom: 5 }}>{x.name}</div>
+                  <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: 500, marginBottom: 5 }}>{x.name}</div>
                   <div style={S.bigNum}>{x.ars ? x.val.toLocaleString("es-AR") : x.val.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}><Pill v={x.chg} /><Spark data={x.sp} color={x.chg >= 0 ? "#00e676" : "#ff5252"} /></div>
                 </div>
@@ -419,7 +419,7 @@ export default function App() {
                 return (<div key={k} style={S.card}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                     <span style={{ fontSize: 12, fontWeight: 700, background: "rgba(79,195,247,0.1)", color: "#4fc3f7", padding: "2px 7px", borderRadius: 4, fontFamily: "var(--mono)" }}>{Sy[k]}</span>
-                    <span style={{ fontSize: 14, color: "rgba(255,255,255,0.55)" }}>{N[k]}</span>
+                    <span style={{ fontSize: 14, color: "rgba(255,255,255,0.8)" }}>{N[k]}</span>
                   </div>
                   <div style={S.bigNum}>{fmtUSD(v.usd)}</div>
                   <div style={{ marginTop: 4 }}><Pill v={v.usd_24h_change} /></div>
@@ -429,7 +429,7 @@ export default function App() {
           </section>
         )}
 
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.2)", textAlign: "center", padding: "18px", lineHeight: 1.6 }}>
+        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", textAlign: "center", padding: "20px", lineHeight: 1.6 }}>
           Datos indicativos con posible delay. Verificá con tu broker antes de operar. FCI actualiza después de las 18hs (CAFCI).
         </div>
       </main>
@@ -494,21 +494,21 @@ const S = {
   advBtn: { display: "flex", alignItems: "center", gap: 6, padding: "9px 18px", background: "rgba(79,195,247,0.07)", border: "1px solid rgba(79,195,247,0.22)", borderRadius: 8, color: "#4fc3f7", cursor: "pointer", fontSize: 14, fontWeight: 600, position: "relative", fontFamily: "inherit" },
   pulse: { position: "absolute", top: -2, right: -2, width: 8, height: 8, borderRadius: "50%", background: "#00e676", animation: "pulse 2s infinite" },
   tabBar: { display: "flex", gap: 4, padding: "12px 28px", borderBottom: "1px solid rgba(255,255,255,0.05)", overflowX: "auto" },
-  tabBtn: { padding: "9px 18px", background: "transparent", border: "none", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 14, fontWeight: 500, borderRadius: 6, whiteSpace: "nowrap", fontFamily: "inherit", transition: "all 0.15s" },
+  tabBtn: { padding: "9px 18px", background: "transparent", border: "none", color: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: 14, fontWeight: 500, borderRadius: 6, whiteSpace: "nowrap", fontFamily: "inherit", transition: "all 0.15s" },
   tabOn: { background: "rgba(79,195,247,0.1)", color: "#4fc3f7" },
-  secT: { fontSize: 17, fontWeight: 600, color: "rgba(255,255,255,0.75)", marginBottom: 14, display: "flex", alignItems: "center", gap: 8 },
+  secT: { fontSize: 17, fontWeight: 600, color: "rgba(255,255,255,0.9)", marginBottom: 14, display: "flex", alignItems: "center", gap: 8 },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: 10 },
   card: { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "16px 18px" },
-  lbl: { fontSize: 11, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 },
+  lbl: { fontSize: 11, color: "rgba(255,255,255,0.55)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 },
   bigNum: { fontSize: 20, fontWeight: 700, fontFamily: "var(--mono)", color: "#fff" },
-  filterBtn: { fontSize: 13, padding: "7px 16px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 18, color: "rgba(255,255,255,0.55)", cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" },
+  filterBtn: { fontSize: 13, padding: "7px 16px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 18, color: "rgba(255,255,255,0.75)", cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" },
   filterOn: { background: "rgba(79,195,247,0.1)", borderColor: "rgba(79,195,247,0.3)", color: "#4fc3f7" },
   searchIn: { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 16px", color: "#fff", fontSize: 14, outline: "none", fontFamily: "inherit", maxWidth: 420, width: "100%" },
   tw: { overflowX: "auto", background: "rgba(255,255,255,0.018)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)" },
   table: { width: "100%", borderCollapse: "collapse", fontSize: 14 },
-  th: { textAlign: "left", padding: "12px 16px", color: "rgba(255,255,255,0.45)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "1px solid rgba(255,255,255,0.06)", userSelect: "none" },
+  th: { textAlign: "left", padding: "12px 16px", color: "rgba(255,255,255,0.65)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "1px solid rgba(255,255,255,0.06)", userSelect: "none" },
   tr: { borderBottom: "1px solid rgba(255,255,255,0.04)" },
-  td: { padding: "11px 16px", color: "rgba(255,255,255,0.8)", fontSize: 14 },
+  td: { padding: "11px 16px", color: "rgba(255,255,255,0.9)", fontSize: 14 },
   tdT: { padding: "11px 16px", fontWeight: 700, fontFamily: "var(--mono)", color: "#4fc3f7", fontSize: 14 },
   chat: { position: "fixed", top: 0, right: 0, width: 400, height: "100vh", background: "#0b1018", borderLeft: "1px solid rgba(79,195,247,0.1)", display: "flex", flexDirection: "column", zIndex: 200, transition: "transform 0.3s ease", boxShadow: "-4px 0 24px rgba(0,0,0,0.4)" },
   chatHd: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(79,195,247,0.03)" },
