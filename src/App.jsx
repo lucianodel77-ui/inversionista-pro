@@ -100,95 +100,34 @@ export default function App() {
       try { const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,tether,usd-coin,ripple&vs_currencies=usd&include_24hr_change=true"); if (r.ok) setCrypto(await r.json()); }
       catch { setCrypto({ bitcoin: { usd: 97250, usd_24h_change: 2.34 }, ethereum: { usd: 3650, usd_24h_change: 1.87 }, solana: { usd: 178.5, usd_24h_change: 4.12 }, tether: { usd: 1, usd_24h_change: 0.01 }, "usd-coin": { usd: 1, usd_24h_change: -0.01 }, ripple: { usd: 2.15, usd_24h_change: 1.23 } }); }
 
-      // FCI — try bulk + individual fichas
+      // FCI — fetch via server proxy (avoids CORS)
       setFciLoading(true);
       let fciResult = null;
-
-      // Step 1: Get fund list with IDs
       try {
-        const r = await fetch("https://api.cafci.org.ar/fondo");
+        // Try fichas mode first (has rendimientos)
+        const r = await fetch("/api/cafci?mode=fichas");
         if (r.ok) {
           const data = await r.json();
-          if (data.data && Array.isArray(data.data)) {
-            // Now fetch individual fichas for funds that have classes
-            const funds = [];
-            const allFundData = data.data.slice(0, 300); // reasonable limit
-
-            // Batch fetch fichas in parallel (limited concurrency)
-            const batchSize = 15;
-            for (let b = 0; b < Math.min(allFundData.length, 120); b += batchSize) {
-              const batch = allFundData.slice(b, b + batchSize);
-              const promises = batch.map(async (f) => {
-                if (!f.clases || f.clases.length === 0) return null;
-                // Get first class (usually the main one)
-                for (const clase of f.clases.slice(0, 2)) {
-                  try {
-                    const fichaR = await fetch(`https://api.cafci.org.ar/fondo/${f.id}/clase/${clase.id}/ficha`);
-                    if (fichaR.ok) {
-                      const fichaData = await fichaR.json();
-                      if (fichaData.data?.info?.diaria) {
-                        const d = fichaData.data.info.diaria;
-                        const rend = d.rendimientos || {};
-                        const model = fichaData.data.model || {};
-                        return {
-                          fondo_id: f.id,
-                          clase_id: clase.id,
-                          fondo: clase.nombre || model.fondo?.nombre || f.nombre || "—",
-                          gerente: model.fondo?.gerente?.nombreCorto || "",
-                          horizonte: model.fondo?.horizonte?.nombre || "",
-                          moneda: model.moneda?.simbolo === "USD" ? "USD" : "ARS",
-                          vcp: d.actual?.vcp || "",
-                          patrimonio: d.actual?.patrimonio || "",
-                          rend_diario: rend.day?.rendimiento != null ? parseFloat(rend.day.rendimiento) : null,
-                          rend_semanal: rend.week?.rendimiento != null ? parseFloat(rend.week.rendimiento) : null,
-                          rend_mensual: rend.month?.rendimiento != null ? parseFloat(rend.month.rendimiento) : null,
-                          rend_trimestral: rend.quarter?.rendimiento != null ? parseFloat(rend.quarter.rendimiento) : null,
-                          rend_semestral: rend.semester?.rendimiento != null ? parseFloat(rend.semester.rendimiento) : null,
-                          rend_ytd: rend.ytd?.rendimiento != null ? parseFloat(rend.ytd.rendimiento) : null,
-                          rend_anual: rend.year?.rendimiento != null ? parseFloat(rend.year.rendimiento) : null,
-                          fecha: d.referenceDay || "",
-                        };
-                      }
-                    }
-                  } catch { /* skip fund on error */ }
-                  return null;
-                }
-                return null;
-              });
-              const results = await Promise.allSettled(promises);
-              results.forEach(r => { if (r.status === "fulfilled" && r.value) funds.push(r.value); });
-              // Small delay between batches to be respectful
-              if (b + batchSize < 120) await new Promise(r => setTimeout(r, 200));
-            }
-            if (funds.length > 0) fciResult = { funds, date: funds[0]?.fecha || new Date().toISOString().split("T")[0] };
+          if (data.success && data.funds?.length > 0) {
+            fciResult = { funds: data.funds, date: data.date };
           }
         }
-      } catch (e) { console.log("Fund list failed:", e); }
+      } catch (e) { console.log("Fichas mode failed:", e); }
 
-      // Step 2: Fallback to bulk endpoint
+      // Fallback to bulk mode
       if (!fciResult) {
-        const today = new Date();
-        for (let i = 0; i < 7; i++) {
-          const d = new Date(today); d.setDate(d.getDate() - i);
-          const ds = d.toISOString().split("T")[0];
-          try {
-            const [pR, dR] = await Promise.allSettled([
-              fetch(`https://api.cafci.org.ar/estadisticas/informacion/diaria/2/${ds}`),
-              fetch(`https://api.cafci.org.ar/estadisticas/informacion/diaria/1/${ds}`),
-            ]);
-            let all = [];
-            for (const [res, mon] of [[pR, "ARS"], [dR, "USD"]]) {
-              if (res.status === "fulfilled" && res.value.ok) {
-                const j = await res.value.json();
-                if (j.success && j.data?.length) all.push(...j.data.map(f => ({ ...f, moneda: mon })));
-              }
+        try {
+          const r = await fetch("/api/cafci?mode=bulk");
+          if (r.ok) {
+            const data = await r.json();
+            if (data.success && data.funds?.length > 0) {
+              fciResult = { funds: data.funds, date: data.date };
             }
-            if (all.length > 0) { fciResult = { funds: all, date: ds }; break; }
-          } catch { continue; }
-        }
+          }
+        } catch (e) { console.log("Bulk mode failed:", e); }
       }
 
-      // Step 3: Fallback to sample
+      // Final fallback to sample data
       if (!fciResult) fciResult = { funds: SAMPLE_FCI, date: new Date().toISOString().split("T")[0] };
 
       setFci(fciResult);
@@ -237,7 +176,7 @@ export default function App() {
       if (fciSort === "patrimonio") return dir * ((parseFloat(a.patrimonio) || 0) - (parseFloat(b.patrimonio) || 0));
       return 0;
     });
-    return f.slice(0, 200);
+    return f.slice(0, 500);
   }, [fci, fciFilter, fciSearch, fciSort, fciSortDir]);
 
   const toggleSort = c => { if (fciSort === c) setFciSortDir(d => d === "desc" ? "asc" : "desc"); else { setFciSort(c); setFciSortDir(c === "nombre" ? "asc" : "desc"); } };
