@@ -300,15 +300,15 @@ export default function App() {
         {tab === "dolares" && (
           <section>
             <h2 style={S.secT}>$ Cotización del Dólar</h2>
-            <div style={S.grid}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
               {dollar ? dollar.map((d, i) => (
                 <div key={i} style={S.card}>
-                  <div style={{ fontSize: 14, color: "rgba(255,255,255,0.8)", fontWeight: 500, marginBottom: 10 }}>{d.nombre}</div>
-                  <div style={{ display: "flex", gap: 14 }}>
-                    {d.compra != null && <div><div style={S.lbl}>Compra</div><div style={S.bigNum}>{fmt(d.compra)}</div></div>}
-                    <div><div style={S.lbl}>Venta</div><div style={S.bigNum}>{fmt(d.venta)}</div></div>
+                  <div style={{ fontSize: 15, color: "rgba(255,255,255,0.8)", fontWeight: 600, marginBottom: 12 }}>{d.nombre}</div>
+                  <div style={{ display: "flex", gap: 24 }}>
+                    {d.compra != null && <div><div style={S.lbl}>Compra</div><div style={{ fontSize: 18, fontWeight: 700, fontFamily: "var(--mono)", color: "#fff" }}>{fmt(d.compra)}</div></div>}
+                    <div><div style={S.lbl}>Venta</div><div style={{ fontSize: 18, fontWeight: 700, fontFamily: "var(--mono)", color: "#fff" }}>{fmt(d.venta)}</div></div>
                   </div>
-                  {d.compra && d.venta && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 6 }}>Spread: {((d.venta - d.compra) / d.compra * 100).toFixed(1)}%</div>}
+                  {d.compra && d.venta && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 8 }}>Spread: {((d.venta - d.compra) / d.compra * 100).toFixed(1)}%</div>}
                 </div>
               )) : Array.from({ length: 6 }).map((_, i) => <div key={i} style={S.card}><Skel w="50%" /><div style={{ marginTop: 10 }}><Skel h={22} /></div></div>)}
             </div>
