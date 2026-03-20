@@ -62,8 +62,8 @@ export default function App() {
   const [fciLoading, setFciLoading] = useState(true);
   const [fciFilter, setFciFilter] = useState("todos");
   const [fciSearch, setFciSearch] = useState("");
-  const [fciSort, setFciSort] = useState("nombre");
-  const [fciSortDir, setFciSortDir] = useState("asc");
+  const [fciSort, setFciSort] = useState("diario");
+  const [fciSortDir, setFciSortDir] = useState("desc");
   const [expandedFund, setExpandedFund] = useState(null);
   const [fundDetail, setFundDetail] = useState({});
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -100,25 +100,46 @@ export default function App() {
       try { const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,tether,usd-coin,ripple&vs_currencies=usd&include_24hr_change=true"); if (r.ok) setCrypto(await r.json()); }
       catch { setCrypto({ bitcoin: { usd: 97250, usd_24h_change: 2.34 }, ethereum: { usd: 3650, usd_24h_change: 1.87 }, solana: { usd: 178.5, usd_24h_change: 4.12 }, tether: { usd: 1, usd_24h_change: 0.01 }, "usd-coin": { usd: 1, usd_24h_change: -0.01 }, ripple: { usd: 2.15, usd_24h_change: 1.23 } }); }
 
-      // FCI — fetch from ArgentinaDatos API (datos reales de CAFCI)
+      // FCI — fetch from ArgentinaDatos API (ultimo + penultimo for daily return)
       setFciLoading(true);
       let fciResult = null;
       try {
-        const fciTypes = [
-          { url: "https://api.argentinadatos.com/v1/finanzas/fci/mercadoDinero/ultimo", type: "money_market" },
-          { url: "https://api.argentinadatos.com/v1/finanzas/fci/rentaFija/ultimo", type: "renta_fija" },
-          { url: "https://api.argentinadatos.com/v1/finanzas/fci/rentaVariable/ultimo", type: "renta_variable" },
-          { url: "https://api.argentinadatos.com/v1/finanzas/fci/rentaMixta/ultimo", type: "renta_mixta" },
-          { url: "https://api.argentinadatos.com/v1/finanzas/fci/otros/ultimo", type: "otros" },
+        const categories = [
+          { path: "mercadoDinero", type: "money_market" },
+          { path: "rentaFija", type: "renta_fija" },
+          { path: "rentaVariable", type: "renta_variable" },
+          { path: "rentaMixta", type: "renta_mixta" },
+          { path: "otros", type: "otros" },
         ];
-        const results = await Promise.allSettled(fciTypes.map(t => fetch(t.url).then(r => r.ok ? r.json() : [])));
+        const BASE = "https://api.argentinadatos.com/v1/finanzas/fci";
+
+        // Fetch ultimo and penultimo in parallel for all categories
+        const fetches = categories.flatMap(c => [
+          fetch(`${BASE}/${c.path}/ultimo`).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`${BASE}/${c.path}/penultimo`).then(r => r.ok ? r.json() : []).catch(() => []),
+        ]);
+        const results = await Promise.all(fetches);
+
         let allFunds = [];
         let fciDate = "";
-        results.forEach((r, i) => {
-          if (r.status === "fulfilled" && Array.isArray(r.value)) {
-            const funds = r.value
-              .filter(f => f.fecha && f.vcp) // skip metadata rows (fecha: null)
-              .map(f => ({
+
+        for (let i = 0; i < categories.length; i++) {
+          const ultimoRaw = results[i * 2] || [];
+          const penultimoRaw = results[i * 2 + 1] || [];
+
+          // Build penultimo lookup by fund name
+          const prevMap = {};
+          penultimoRaw.filter(f => f.fecha && f.vcp).forEach(f => { prevMap[f.fondo] = parseFloat(f.vcp); });
+
+          const funds = ultimoRaw
+            .filter(f => f.fecha && f.vcp)
+            .map(f => {
+              const vcpNow = parseFloat(f.vcp);
+              const vcpPrev = prevMap[f.fondo];
+              const rendDiario = (vcpPrev && vcpNow && vcpPrev > 0)
+                ? ((vcpNow - vcpPrev) / vcpPrev) * 100
+                : null;
+              return {
                 fondo: f.fondo || "—",
                 fecha: f.fecha || "",
                 vcp: f.vcp ? String(f.vcp) : "",
@@ -126,12 +147,14 @@ export default function App() {
                 patrimonio: f.patrimonio ? String(f.patrimonio) : "",
                 horizonte: f.horizonte || "",
                 moneda: "ARS",
-                type: fciTypes[i].type,
-              }));
-            allFunds = [...allFunds, ...funds];
-            if (!fciDate && funds.length > 0) fciDate = funds[0].fecha;
-          }
-        });
+                type: categories[i].type,
+                rend_diario: rendDiario,
+              };
+            });
+          allFunds = [...allFunds, ...funds];
+          if (!fciDate && funds.length > 0) fciDate = funds[0].fecha;
+        }
+
         if (allFunds.length > 0) {
           fciResult = { funds: allFunds, date: fciDate };
         }
@@ -193,7 +216,7 @@ export default function App() {
   const toggleSort = c => { if (fciSort === c) setFciSortDir(d => d === "desc" ? "asc" : "desc"); else { setFciSort(c); setFciSortDir(c === "nombre" ? "asc" : "desc"); } };
   const SortIcon = ({ col }) => fciSort === col ? <span style={{ marginLeft: 3, fontSize: 9 }}>{fciSortDir === "desc" ? "▼" : "▲"}</span> : null;
 
-  const hasRend = fci?.funds?.[0]?.rend_diario != null;
+  const hasFciData = fci?.funds?.length > 20;
   const tabs = [{ id: "fci", l: "📊 Fondos (FCI)" }, { id: "dolares", l: "$ Dólares" }, { id: "acciones", l: "▲ Acciones" }, { id: "bonos", l: "◆ Bonos" }, { id: "crypto", l: "₿ Crypto" }];
   const fTypes = [{ id: "todos", l: "Todos" }, { id: "money_market", l: "💵 Money Market" }, { id: "renta_fija", l: "📈 Renta Fija" }, { id: "renta_variable", l: "🔥 R. Variable" }, { id: "renta_mixta", l: "⚖️ Mixta" }];
   const qPrompts = ["¿Qué FCI money market recomendás?", "Dólar MEP vs blue", "¿Conviene Bitcoin?", "Mejores bonos USD", "Portafolio moderado", "FCI de renta fija"];
@@ -234,8 +257,7 @@ export default function App() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
               <h2 style={S.secT}>📊 Fondos Comunes de Inversión
                 {fci?.date && <span style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", marginLeft: 10, fontWeight: 400 }}>Datos al {fci.date}</span>}
-                {hasRend && <span style={{ fontSize: 11, color: "#00e676", marginLeft: 10, background: "rgba(0,230,118,0.1)", padding: "2px 10px", borderRadius: 10 }}>Con rendimientos</span>}
-                {!hasRend && fci?.funds?.length > 20 && <span style={{ fontSize: 11, color: "#4fc3f7", marginLeft: 10, background: "rgba(79,195,247,0.1)", padding: "2px 10px", borderRadius: 10 }}>Datos reales</span>}
+                {hasFciData && <span style={{ fontSize: 11, color: "#00e676", marginLeft: 10, background: "rgba(0,230,118,0.1)", padding: "2px 10px", borderRadius: 10 }}>Datos reales</span>}
               </h2>
               <span style={{ fontSize: 13, color: "rgba(79,195,247,0.7)", background: "rgba(79,195,247,0.06)", padding: "4px 12px", borderRadius: 12 }}>{filtered.length} fondos</span>
             </div>
@@ -254,21 +276,14 @@ export default function App() {
                 <table style={S.table}>
                   <thead><tr>
                     <th style={{ ...S.th, cursor: "pointer", minWidth: 220 }} onClick={() => toggleSort("nombre")}>Fondo<SortIcon col="nombre" /></th>
-                    <th style={{ ...S.th, textAlign: "center", width: 65 }}>Tipo</th>
-                    <th style={{ ...S.th, textAlign: "center", width: 40 }}>$</th>
-                    {hasRend ? <>
-                      <th style={{ ...S.th, textAlign: "right", cursor: "pointer", width: 80 }} onClick={() => toggleSort("diario")}>Diario<SortIcon col="diario" /></th>
-                      <th style={{ ...S.th, textAlign: "right", cursor: "pointer", width: 80 }} onClick={() => toggleSort("mensual")}>Mensual<SortIcon col="mensual" /></th>
-                      <th style={{ ...S.th, textAlign: "right", cursor: "pointer", width: 80 }} onClick={() => toggleSort("ytd")}>YTD<SortIcon col="ytd" /></th>
-                      <th style={{ ...S.th, textAlign: "right", cursor: "pointer", width: 80 }} onClick={() => toggleSort("anual")}>Anual<SortIcon col="anual" /></th>
-                    </> : <>
-                      <th style={{ ...S.th, textAlign: "right", width: 120, cursor: "pointer" }} onClick={() => toggleSort("vcp")}>Valor CP<SortIcon col="vcp" /></th>
-                    </>}
-                    <th style={{ ...S.th, textAlign: "right", cursor: "pointer", width: 85 }} onClick={() => toggleSort("patrimonio")}>Patrim.<SortIcon col="patrimonio" /></th>
+                    <th style={{ ...S.th, textAlign: "center", width: 80 }}>Tipo</th>
+                    <th style={{ ...S.th, textAlign: "right", cursor: "pointer", width: 100 }} onClick={() => toggleSort("diario")}>Rend. Diario<SortIcon col="diario" /></th>
+                    <th style={{ ...S.th, textAlign: "right", cursor: "pointer", width: 130 }} onClick={() => toggleSort("vcp")}>Valor CP<SortIcon col="vcp" /></th>
+                    <th style={{ ...S.th, textAlign: "right", cursor: "pointer", width: 100 }} onClick={() => toggleSort("patrimonio")}>Patrimonio<SortIcon col="patrimonio" /></th>
                   </tr></thead>
                   <tbody>
                     {filtered.length === 0 ? (
-                      <tr><td colSpan={hasRend ? 8 : 5} style={{ ...S.td, textAlign: "center", padding: 36, color: "rgba(255,255,255,0.2)" }}>Sin resultados</td></tr>
+                      <tr><td colSpan={5} style={{ ...S.td, textAlign: "center", padding: 36, color: "rgba(255,255,255,0.3)" }}>Sin resultados</td></tr>
                     ) : filtered.map((f, i) => {
                       const ti = TYPES[f.type] || TYPES.otros;
                       return (
@@ -280,17 +295,8 @@ export default function App() {
                           <td style={{ ...S.td, textAlign: "center" }}>
                             <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 8, border: `1px solid ${ti.color}50`, color: ti.color, fontWeight: 700, letterSpacing: "0.03em" }}>{ti.short}</span>
                           </td>
-                          <td style={{ ...S.td, textAlign: "center" }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, fontFamily: "var(--mono)", color: f.moneda === "USD" ? "#ffd740" : "rgba(255,255,255,0.7)" }}>{f.moneda}</span>
-                          </td>
-                          {hasRend ? <>
-                            <td style={{ ...S.td, textAlign: "right" }}><Pill v={f.rend_diario} sm /></td>
-                            <td style={{ ...S.td, textAlign: "right" }}><Pill v={f.rend_mensual} sm /></td>
-                            <td style={{ ...S.td, textAlign: "right" }}><Pill v={f.rend_ytd} sm /></td>
-                            <td style={{ ...S.td, textAlign: "right" }}><Pill v={f.rend_anual} sm /></td>
-                          </> : <>
-                            <td style={{ ...S.td, textAlign: "right", fontFamily: "var(--mono)", fontWeight: 600, color: "#fff", fontSize: 14 }}>{fmtNum(parseFloat(f.vcp))}</td>
-                          </>}
+                          <td style={{ ...S.td, textAlign: "right" }}><Pill v={f.rend_diario} sm /></td>
+                          <td style={{ ...S.td, textAlign: "right", fontFamily: "var(--mono)", fontWeight: 600, color: "#fff", fontSize: 14 }}>{fmtNum(parseFloat(f.vcp))}</td>
                           <td style={{ ...S.td, textAlign: "right", fontFamily: "var(--mono)", color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
                             {f.patrimonio ? `$${(parseFloat(f.patrimonio) / 1e6).toFixed(0)}M` : "—"}
                           </td>
