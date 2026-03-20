@@ -279,10 +279,10 @@ export default function App() {
 
             {/* Benchmark bar */}
             {fci?.benchmarkTEA && (
-              <div style={{ display: "flex", gap: 16, padding: "10px 16px", background: "rgba(255,255,255,0.025)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.05)", marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>📊 Benchmark:</span>
-                <span style={{ fontSize: 12, color: "#ffd740", fontFamily: "var(--mono)", fontWeight: 600 }}>Depósitos 30d TNA {fci.benchmarkTNA?.toFixed(1)}% → TEA {fci.benchmarkTEA?.toFixed(1)}%</span>
-                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Referencia para Money Market y Renta Fija</span>
+              <div style={{ display: "flex", gap: 16, padding: "12px 16px", background: "rgba(255,255,255,0.025)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.05)", marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13, color: "rgba(255,255,255,0.7)" }}>📊 Benchmark Plazo Fijo:</span>
+                <span style={{ fontSize: 13, color: "#ffd740", fontFamily: "var(--mono)", fontWeight: 600 }}>TNA {fci.benchmarkTNA?.toFixed(1)}% → TEA {fci.benchmarkTEA?.toFixed(1)}%</span>
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>(Tasa depósitos 30 días — referencia para comparar MM y RF)</span>
               </div>
             )}
 
@@ -305,7 +305,9 @@ export default function App() {
                     ) : filtered.map((f, i) => {
                       const ti = TYPES[f.type] || TYPES.otros;
                       // Benchmark comparison: green if TEA > benchmark, yellow otherwise
-                      const beatsBench = fci?.benchmarkTEA && f.tea ? f.tea > fci.benchmarkTEA : null;
+                      // TEA only meaningful for MM and RF (stable daily returns)
+                      const showTea = (f.type === "money_market" || f.type === "renta_fija") && f.tea != null && f.tea < 500;
+                      const beatsBench = showTea && fci?.benchmarkTEA ? f.tea > fci.benchmarkTEA : null;
                       return (
                         <tr key={i} style={S.tr} className="fci-row">
                           <td style={{ ...S.td, maxWidth: 320 }}>
@@ -317,11 +319,11 @@ export default function App() {
                           </td>
                           <td style={{ ...S.td, textAlign: "right" }}><Pill v={f.rend_diario} sm /></td>
                           <td style={{ ...S.td, textAlign: "right" }}>
-                            {f.tea != null ? (
+                            {showTea ? (
                               <span style={{ fontSize: 13, fontWeight: 600, fontFamily: "var(--mono)", color: beatsBench === true ? "#00e676" : beatsBench === false ? "#ffd740" : "rgba(255,255,255,0.7)" }}>
                                 {f.tea.toFixed(1)}%
                               </span>
-                            ) : <span style={{ fontSize: 13, color: "rgba(255,255,255,0.3)" }}>—</span>}
+                            ) : <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>—</span>}
                           </td>
                           <td style={{ ...S.td, textAlign: "right", fontFamily: "var(--mono)", fontWeight: 600, color: "#fff", fontSize: 14 }}>{fmtNum(parseFloat(f.vcp))}</td>
                           <td style={{ ...S.td, textAlign: "right", fontFamily: "var(--mono)", color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
@@ -335,8 +337,9 @@ export default function App() {
               </div>
             )}
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", textAlign: "center", marginTop: 14, lineHeight: 1.7 }}>
-              Fuente: ArgentinaDatos (CAFCI) · TEA Proyectada = (1 + var_diaria)³⁶⁵ − 1 (interés compuesto) · VCP neto de honorarios de gestión (no incluye impuestos como Bienes Personales)
-              <br/>TEA en <span style={{ color: "#00e676" }}>verde</span> supera el benchmark · En <span style={{ color: "#ffd740" }}>amarillo</span> está por debajo · Rendimientos pasados no garantizan rendimientos futuros
+              Fuente: ArgentinaDatos (CAFCI) · TEA Proyectada = (1 + var_diaria)³⁶⁵ − 1 — solo para Money Market y Renta Fija (variación diaria estable)
+              <br/>VCP neto de honorarios de gestión (no incluye impuestos como Bienes Personales) · TEA en <span style={{ color: "#00e676" }}>verde</span> supera el benchmark, en <span style={{ color: "#ffd740" }}>amarillo</span> está por debajo
+              <br/>Para Renta Variable y Mixta la TEA no aplica por alta volatilidad diaria · Rendimientos pasados no garantizan rendimientos futuros
             </div>
           </section>
         )}
