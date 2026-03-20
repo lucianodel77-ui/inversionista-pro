@@ -62,7 +62,7 @@ export default function App() {
   const [fciLoading, setFciLoading] = useState(true);
   const [fciFilter, setFciFilter] = useState("todos");
   const [fciSearch, setFciSearch] = useState("");
-  const [fciSort, setFciSort] = useState("diario");
+  const [fciSort, setFciSort] = useState("tea");
   const [fciSortDir, setFciSortDir] = useState("desc");
   const [expandedFund, setExpandedFund] = useState(null);
   const [fundDetail, setFundDetail] = useState({});
@@ -100,7 +100,7 @@ export default function App() {
       try { const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,tether,usd-coin,ripple&vs_currencies=usd&include_24hr_change=true"); if (r.ok) setCrypto(await r.json()); }
       catch { setCrypto({ bitcoin: { usd: 97250, usd_24h_change: 2.34 }, ethereum: { usd: 3650, usd_24h_change: 1.87 }, solana: { usd: 178.5, usd_24h_change: 4.12 }, tether: { usd: 1, usd_24h_change: 0.01 }, "usd-coin": { usd: 1, usd_24h_change: -0.01 }, ripple: { usd: 2.15, usd_24h_change: 1.23 } }); }
 
-      // FCI — fetch from ArgentinaDatos API (ultimo + penultimo for daily return)
+      // FCI — fetch from ArgentinaDatos + benchmark rates
       setFciLoading(true);
       let fciResult = null;
       try {
@@ -113,12 +113,22 @@ export default function App() {
         ];
         const BASE = "https://api.argentinadatos.com/v1/finanzas/fci";
 
-        // Fetch ultimo and penultimo in parallel for all categories
-        const fetches = categories.flatMap(c => [
-          fetch(`${BASE}/${c.path}/ultimo`).then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch(`${BASE}/${c.path}/penultimo`).then(r => r.ok ? r.json() : []).catch(() => []),
-        ]);
+        // Fetch ultimo + penultimo for all categories + benchmark
+        const fetches = [
+          ...categories.flatMap(c => [
+            fetch(`${BASE}/${c.path}/ultimo`).then(r => r.ok ? r.json() : []).catch(() => []),
+            fetch(`${BASE}/${c.path}/penultimo`).then(r => r.ok ? r.json() : []).catch(() => []),
+          ]),
+          // Benchmark: tasas depósitos 30 días (proxy Badlar)
+          fetch("https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias").then(r => r.ok ? r.json() : []).catch(() => []),
+        ];
         const results = await Promise.all(fetches);
+
+        // Extract benchmark rate (last = most recent)
+        const tasasData = results[results.length - 1] || [];
+        const benchmarkTNA = tasasData.length > 0 ? parseFloat(tasasData[tasasData.length - 1]?.valor || 0) : null;
+        // Convert TNA to TEA: TEA = (1 + TNA/365)^365 - 1
+        const benchmarkTEA = benchmarkTNA ? (Math.pow(1 + benchmarkTNA / 100 / 365, 365) - 1) * 100 : null;
 
         let allFunds = [];
         let fciDate = "";
@@ -126,8 +136,6 @@ export default function App() {
         for (let i = 0; i < categories.length; i++) {
           const ultimoRaw = results[i * 2] || [];
           const penultimoRaw = results[i * 2 + 1] || [];
-
-          // Build penultimo lookup by fund name
           const prevMap = {};
           penultimoRaw.filter(f => f.fecha && f.vcp).forEach(f => { prevMap[f.fondo] = parseFloat(f.vcp); });
 
@@ -136,19 +144,18 @@ export default function App() {
             .map(f => {
               const vcpNow = parseFloat(f.vcp);
               const vcpPrev = prevMap[f.fondo];
-              const rendDiario = (vcpPrev && vcpNow && vcpPrev > 0)
-                ? ((vcpNow - vcpPrev) / vcpPrev) * 100
-                : null;
+              // Daily return (decimal): r = (VCP_hoy / VCP_ayer) - 1
+              const rDaily = (vcpPrev && vcpNow && vcpPrev > 0) ? (vcpNow / vcpPrev) - 1 : null;
+              // TEA (compound): (1 + r_diario)^365 - 1
+              const tea = rDaily != null ? (Math.pow(1 + rDaily, 365) - 1) * 100 : null;
+              // Daily % for display
+              const rendDiario = rDaily != null ? rDaily * 100 : null;
+
               return {
-                fondo: f.fondo || "—",
-                fecha: f.fecha || "",
-                vcp: f.vcp ? String(f.vcp) : "",
-                ccp: f.ccp ? String(f.ccp) : "",
-                patrimonio: f.patrimonio ? String(f.patrimonio) : "",
-                horizonte: f.horizonte || "",
-                moneda: "ARS",
-                type: categories[i].type,
-                rend_diario: rendDiario,
+                fondo: f.fondo || "—", fecha: f.fecha || "",
+                vcp: f.vcp ? String(f.vcp) : "", patrimonio: f.patrimonio ? String(f.patrimonio) : "",
+                horizonte: f.horizonte || "", moneda: "ARS",
+                type: categories[i].type, rend_diario: rendDiario, tea,
               };
             });
           allFunds = [...allFunds, ...funds];
@@ -156,7 +163,7 @@ export default function App() {
         }
 
         if (allFunds.length > 0) {
-          fciResult = { funds: allFunds, date: fciDate };
+          fciResult = { funds: allFunds, date: fciDate, benchmarkTEA, benchmarkTNA };
         }
       } catch (e) { console.log("ArgentinaDatos FCI failed:", e); }
 
@@ -203,6 +210,7 @@ export default function App() {
       const dir = fciSortDir === "desc" ? -1 : 1;
       if (fciSort === "nombre") return dir * (a.fondo || "").localeCompare(b.fondo || "");
       if (fciSort === "diario") return dir * ((a.rend_diario ?? -999) - (b.rend_diario ?? -999));
+      if (fciSort === "tea") return dir * ((a.tea ?? -999) - (b.tea ?? -999));
       if (fciSort === "mensual") return dir * ((a.rend_mensual ?? -999) - (b.rend_mensual ?? -999));
       if (fciSort === "ytd") return dir * ((a.rend_ytd ?? -999) - (b.rend_ytd ?? -999));
       if (fciSort === "anual") return dir * ((a.rend_anual ?? -999) - (b.rend_anual ?? -999));
@@ -269,6 +277,15 @@ export default function App() {
               <input style={S.searchIn} placeholder="🔍 Buscar por nombre o administradora..." value={fciSearch} onChange={e => setFciSearch(e.target.value)} />
             </div>
 
+            {/* Benchmark bar */}
+            {fci?.benchmarkTEA && (
+              <div style={{ display: "flex", gap: 16, padding: "10px 16px", background: "rgba(255,255,255,0.025)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.05)", marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>📊 Benchmark:</span>
+                <span style={{ fontSize: 12, color: "#ffd740", fontFamily: "var(--mono)", fontWeight: 600 }}>Depósitos 30d TNA {fci.benchmarkTNA?.toFixed(1)}% → TEA {fci.benchmarkTEA?.toFixed(1)}%</span>
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Referencia para Money Market y Renta Fija</span>
+              </div>
+            )}
+
             {fciLoading ? (
               <div style={S.tw}>{Array.from({ length: 12 }).map((_, i) => <div key={i} style={{ padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,0.02)" }}><Skel h={16} /></div>)}</div>
             ) : (
@@ -277,15 +294,18 @@ export default function App() {
                   <thead><tr>
                     <th style={{ ...S.th, cursor: "pointer", minWidth: 220 }} onClick={() => toggleSort("nombre")}>Fondo<SortIcon col="nombre" /></th>
                     <th style={{ ...S.th, textAlign: "center", width: 80 }}>Tipo</th>
-                    <th style={{ ...S.th, textAlign: "right", cursor: "pointer", width: 100 }} onClick={() => toggleSort("diario")}>Rend. Diario<SortIcon col="diario" /></th>
-                    <th style={{ ...S.th, textAlign: "right", cursor: "pointer", width: 130 }} onClick={() => toggleSort("vcp")}>Valor CP<SortIcon col="vcp" /></th>
+                    <th style={{ ...S.th, textAlign: "right", cursor: "pointer", width: 100 }} onClick={() => toggleSort("diario")}>Var. Diaria<SortIcon col="diario" /></th>
+                    <th style={{ ...S.th, textAlign: "right", cursor: "pointer", width: 100 }} onClick={() => toggleSort("tea")}>TEA Proy.<SortIcon col="tea" /></th>
+                    <th style={{ ...S.th, textAlign: "right", cursor: "pointer", width: 120 }} onClick={() => toggleSort("vcp")}>Valor CP<SortIcon col="vcp" /></th>
                     <th style={{ ...S.th, textAlign: "right", cursor: "pointer", width: 100 }} onClick={() => toggleSort("patrimonio")}>Patrimonio<SortIcon col="patrimonio" /></th>
                   </tr></thead>
                   <tbody>
                     {filtered.length === 0 ? (
-                      <tr><td colSpan={5} style={{ ...S.td, textAlign: "center", padding: 36, color: "rgba(255,255,255,0.3)" }}>Sin resultados</td></tr>
+                      <tr><td colSpan={6} style={{ ...S.td, textAlign: "center", padding: 36, color: "rgba(255,255,255,0.3)" }}>Sin resultados</td></tr>
                     ) : filtered.map((f, i) => {
                       const ti = TYPES[f.type] || TYPES.otros;
+                      // Benchmark comparison: green if TEA > benchmark, yellow otherwise
+                      const beatsBench = fci?.benchmarkTEA && f.tea ? f.tea > fci.benchmarkTEA : null;
                       return (
                         <tr key={i} style={S.tr} className="fci-row">
                           <td style={{ ...S.td, maxWidth: 320 }}>
@@ -293,9 +313,16 @@ export default function App() {
                             {f.gerente && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)", marginTop: 2 }}>{f.gerente}</div>}
                           </td>
                           <td style={{ ...S.td, textAlign: "center" }}>
-                            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 8, border: `1px solid ${ti.color}50`, color: ti.color, fontWeight: 700, letterSpacing: "0.03em" }}>{ti.short}</span>
+                            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 8, border: `1px solid ${ti.color}50`, color: ti.color, fontWeight: 700 }}>{ti.short}</span>
                           </td>
                           <td style={{ ...S.td, textAlign: "right" }}><Pill v={f.rend_diario} sm /></td>
+                          <td style={{ ...S.td, textAlign: "right" }}>
+                            {f.tea != null ? (
+                              <span style={{ fontSize: 13, fontWeight: 600, fontFamily: "var(--mono)", color: beatsBench === true ? "#00e676" : beatsBench === false ? "#ffd740" : "rgba(255,255,255,0.7)" }}>
+                                {f.tea.toFixed(1)}%
+                              </span>
+                            ) : <span style={{ fontSize: 13, color: "rgba(255,255,255,0.3)" }}>—</span>}
+                          </td>
                           <td style={{ ...S.td, textAlign: "right", fontFamily: "var(--mono)", fontWeight: 600, color: "#fff", fontSize: 14 }}>{fmtNum(parseFloat(f.vcp))}</td>
                           <td style={{ ...S.td, textAlign: "right", fontFamily: "var(--mono)", color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
                             {f.patrimonio ? `$${(parseFloat(f.patrimonio) / 1e6).toFixed(0)}M` : "—"}
@@ -307,8 +334,9 @@ export default function App() {
                 </table>
               </div>
             )}
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", textAlign: "center", marginTop: 14, lineHeight: 1.6 }}>
-              Fuente: ArgentinaDatos (api.argentinadatos.com) — Datos de CAFCI actualizados diariamente
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", textAlign: "center", marginTop: 14, lineHeight: 1.7 }}>
+              Fuente: ArgentinaDatos (CAFCI) · TEA Proyectada = (1 + var_diaria)³⁶⁵ − 1 (interés compuesto) · VCP neto de honorarios de gestión (no incluye impuestos como Bienes Personales)
+              <br/>TEA en <span style={{ color: "#00e676" }}>verde</span> supera el benchmark · En <span style={{ color: "#ffd740" }}>amarillo</span> está por debajo · Rendimientos pasados no garantizan rendimientos futuros
             </div>
           </section>
         )}
