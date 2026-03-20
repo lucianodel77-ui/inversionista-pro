@@ -306,7 +306,7 @@ export default function App() {
                       const ti = TYPES[f.type] || TYPES.otros;
                       // Benchmark comparison: green if TEA > benchmark, yellow otherwise
                       // TEA only meaningful for MM and RF (stable daily returns)
-                      const showTea = (f.type === "money_market" || f.type === "renta_fija") && f.tea != null && f.tea < 500;
+                      const showTea = (f.type === "money_market" || f.type === "renta_fija") && f.tea != null && f.tea < 2000;
                       const beatsBench = showTea && fci?.benchmarkTEA ? f.tea > fci.benchmarkTEA : null;
                       return (
                         <tr key={i} style={S.tr} className="fci-row">
