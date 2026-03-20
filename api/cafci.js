@@ -1,21 +1,30 @@
 // /api/cafci.js — Vercel Serverless Function
-// Proxies CAFCI API requests to avoid CORS issues in the browser
+// Proxies CAFCI API requests with proper browser headers
+
+const CAFCI_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Accept": "application/json, text/plain, */*",
+  "Accept-Language": "es-AR,es;q=0.9,en;q=0.8",
+  "Referer": "https://www.cafci.org.ar/",
+  "Origin": "https://www.cafci.org.ar",
+};
+
+async function cafciFetch(url) {
+  const r = await fetch(url, { headers: CAFCI_HEADERS });
+  if (!r.ok) throw new Error(`CAFCI ${r.status} for ${url}`);
+  return r.json();
+}
 
 export default async function handler(req, res) {
-  // Set CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600"); // Cache 5 min
+  res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
 
-  const { mode } = req.query; // "fichas" or "bulk"
+  const { mode } = req.query;
 
   try {
     if (mode === "fichas") {
-      // Strategy 1: Get fund list + individual fichas with rendimientos
-      const fundListRes = await fetch("https://api.cafci.org.ar/fondo");
-      if (!fundListRes.ok) throw new Error("Fund list failed");
-
-      const fundListData = await fundListRes.json();
-      if (!fundListData.data || !Array.isArray(fundListData.data)) throw new Error("No fund data");
+      const fundListData = await cafciFetch("https://api.cafci.org.ar/fondo");
+      if (!fundListData.data || !Array.isArray(fundListData.data)) throw new Error("No fund list");
 
       const allFunds = fundListData.data.slice(0, 300);
       const funds = [];
@@ -27,11 +36,9 @@ export default async function handler(req, res) {
           if (!f.clases || f.clases.length === 0) return null;
           for (const clase of f.clases.slice(0, 2)) {
             try {
-              const fichaRes = await fetch(
+              const fichaData = await cafciFetch(
                 `https://api.cafci.org.ar/fondo/${f.id}/clase/${clase.id}/ficha`
               );
-              if (!fichaRes.ok) continue;
-              const fichaData = await fichaRes.json();
               if (fichaData.data?.info?.diaria) {
                 const d = fichaData.data.info.diaria;
                 const rend = d.rendimientos || {};
@@ -55,9 +62,7 @@ export default async function handler(req, res) {
                   fecha: d.referenceDay || "",
                 };
               }
-            } catch {
-              // Skip this fund/class on error
-            }
+            } catch { /* skip */ }
           }
           return null;
         });
@@ -66,83 +71,48 @@ export default async function handler(req, res) {
         results.forEach((r) => {
           if (r.status === "fulfilled" && r.value) funds.push(r.value);
         });
-
-        // Small delay between batches
         if (b + batchSize < 200) await new Promise((r) => setTimeout(r, 150));
       }
 
       if (funds.length > 0) {
         return res.status(200).json({
-          success: true,
-          mode: "fichas",
+          success: true, mode: "fichas", count: funds.length,
           date: funds[0]?.fecha || new Date().toISOString().split("T")[0],
           funds,
         });
       }
-      // If fichas failed, fall through to bulk
-      throw new Error("No fichas data");
+      throw new Error("No fichas collected");
     }
 
-    // Strategy 2 (default/fallback): Bulk endpoint
+    // Bulk mode
     const today = new Date();
     for (let i = 0; i < 7; i++) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);
       const ds = d.toISOString().split("T")[0];
-
       try {
-        const [pesosRes, dollarRes] = await Promise.allSettled([
-          fetch(`https://api.cafci.org.ar/estadisticas/informacion/diaria/2/${ds}`),
-          fetch(`https://api.cafci.org.ar/estadisticas/informacion/diaria/1/${ds}`),
-        ]);
-
         let all = [];
-        for (const [r, mon] of [[pesosRes, "ARS"], [dollarRes, "USD"]]) {
-          if (r.status === "fulfilled" && r.value.ok) {
-            const j = await r.value.json();
+        for (const [monId, mon] of [["2", "ARS"], ["1", "USD"]]) {
+          try {
+            const j = await cafciFetch(
+              `https://api.cafci.org.ar/estadisticas/informacion/diaria/${monId}/${ds}`
+            );
             if (j.success && j.data?.length) {
               all.push(...j.data.map((f) => ({ ...f, moneda: mon })));
             }
-          }
+          } catch { /* skip */ }
         }
-
         if (all.length > 0) {
           return res.status(200).json({
-            success: true,
-            mode: "bulk",
-            date: ds,
-            funds: all,
+            success: true, mode: "bulk", count: all.length, date: ds, funds: all,
           });
         }
-      } catch {
-        continue;
-      }
+      } catch { continue; }
     }
 
     return res.status(200).json({ success: false, mode: "none", funds: [] });
   } catch (error) {
-    console.error("CAFCI proxy error:", error.message);
-    // Try bulk as final fallback
-    try {
-      const today = new Date();
-      for (let i = 0; i < 7; i++) {
-        const d = new Date(today);
-        d.setDate(d.getDate() - i);
-        const ds = d.toISOString().split("T")[0];
-        const r = await fetch(`https://api.cafci.org.ar/estadisticas/informacion/diaria/2/${ds}`);
-        if (r.ok) {
-          const j = await r.json();
-          if (j.success && j.data?.length) {
-            return res.status(200).json({
-              success: true,
-              mode: "bulk_fallback",
-              date: ds,
-              funds: j.data.map((f) => ({ ...f, moneda: "ARS" })),
-            });
-          }
-        }
-      }
-    } catch {}
-    return res.status(500).json({ success: false, error: "CAFCI API unavailable" });
+    console.error("CAFCI error:", error.message);
+    return res.status(200).json({ success: false, error: error.message, funds: [] });
   }
 }
