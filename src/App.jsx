@@ -62,8 +62,8 @@ export default function App() {
   const [fciLoading, setFciLoading] = useState(true);
   const [fciFilter, setFciFilter] = useState("todos");
   const [fciSearch, setFciSearch] = useState("");
-  const [fciSort, setFciSort] = useState("diario");
-  const [fciSortDir, setFciSortDir] = useState("desc");
+  const [fciSort, setFciSort] = useState("nombre");
+  const [fciSortDir, setFciSortDir] = useState("asc");
   const [expandedFund, setExpandedFund] = useState(null);
   const [fundDetail, setFundDetail] = useState({});
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -100,32 +100,42 @@ export default function App() {
       try { const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,tether,usd-coin,ripple&vs_currencies=usd&include_24hr_change=true"); if (r.ok) setCrypto(await r.json()); }
       catch { setCrypto({ bitcoin: { usd: 97250, usd_24h_change: 2.34 }, ethereum: { usd: 3650, usd_24h_change: 1.87 }, solana: { usd: 178.5, usd_24h_change: 4.12 }, tether: { usd: 1, usd_24h_change: 0.01 }, "usd-coin": { usd: 1, usd_24h_change: -0.01 }, ripple: { usd: 2.15, usd_24h_change: 1.23 } }); }
 
-      // FCI — fetch via server proxy (avoids CORS)
+      // FCI — fetch from ArgentinaDatos API (datos reales de CAFCI)
       setFciLoading(true);
       let fciResult = null;
       try {
-        // Try fichas mode first (has rendimientos)
-        const r = await fetch("/api/cafci?mode=fichas");
-        if (r.ok) {
-          const data = await r.json();
-          if (data.success && data.funds?.length > 0) {
-            fciResult = { funds: data.funds, date: data.date };
+        const fciTypes = [
+          { url: "https://api.argentinadatos.com/v1/finanzas/fci/mercadoDinero/ultimo", type: "money_market" },
+          { url: "https://api.argentinadatos.com/v1/finanzas/fci/rentaFija/ultimo", type: "renta_fija" },
+          { url: "https://api.argentinadatos.com/v1/finanzas/fci/rentaVariable/ultimo", type: "renta_variable" },
+          { url: "https://api.argentinadatos.com/v1/finanzas/fci/rentaMixta/ultimo", type: "renta_mixta" },
+          { url: "https://api.argentinadatos.com/v1/finanzas/fci/otros/ultimo", type: "otros" },
+        ];
+        const results = await Promise.allSettled(fciTypes.map(t => fetch(t.url).then(r => r.ok ? r.json() : [])));
+        let allFunds = [];
+        let fciDate = "";
+        results.forEach((r, i) => {
+          if (r.status === "fulfilled" && Array.isArray(r.value)) {
+            const funds = r.value
+              .filter(f => f.fecha && f.vcp) // skip metadata rows (fecha: null)
+              .map(f => ({
+                fondo: f.fondo || "—",
+                fecha: f.fecha || "",
+                vcp: f.vcp ? String(f.vcp) : "",
+                ccp: f.ccp ? String(f.ccp) : "",
+                patrimonio: f.patrimonio ? String(f.patrimonio) : "",
+                horizonte: f.horizonte || "",
+                moneda: "ARS",
+                type: fciTypes[i].type,
+              }));
+            allFunds = [...allFunds, ...funds];
+            if (!fciDate && funds.length > 0) fciDate = funds[0].fecha;
           }
+        });
+        if (allFunds.length > 0) {
+          fciResult = { funds: allFunds, date: fciDate };
         }
-      } catch (e) { console.log("Fichas mode failed:", e); }
-
-      // Fallback to bulk mode
-      if (!fciResult) {
-        try {
-          const r = await fetch("/api/cafci?mode=bulk");
-          if (r.ok) {
-            const data = await r.json();
-            if (data.success && data.funds?.length > 0) {
-              fciResult = { funds: data.funds, date: data.date };
-            }
-          }
-        } catch (e) { console.log("Bulk mode failed:", e); }
-      }
+      } catch (e) { console.log("ArgentinaDatos FCI failed:", e); }
 
       // Final fallback to sample data
       if (!fciResult) fciResult = { funds: SAMPLE_FCI, date: new Date().toISOString().split("T")[0] };
@@ -163,7 +173,7 @@ export default function App() {
   // ── FCI filter/sort ──
   const filtered = useMemo(() => {
     if (!fci?.funds) return [];
-    let f = fci.funds.map(x => ({ ...x, type: classifyFund(x.fondo, x.horizonte) }));
+    let f = fci.funds.map(x => ({ ...x, type: x.type || classifyFund(x.fondo, x.horizonte) }));
     if (fciFilter !== "todos") f = f.filter(x => x.type === fciFilter);
     if (fciSearch) { const q = fciSearch.toLowerCase(); f = f.filter(x => (x.fondo || "").toLowerCase().includes(q) || (x.gerente || "").toLowerCase().includes(q)); }
     f.sort((a, b) => {
@@ -173,6 +183,7 @@ export default function App() {
       if (fciSort === "mensual") return dir * ((a.rend_mensual ?? -999) - (b.rend_mensual ?? -999));
       if (fciSort === "ytd") return dir * ((a.rend_ytd ?? -999) - (b.rend_ytd ?? -999));
       if (fciSort === "anual") return dir * ((a.rend_anual ?? -999) - (b.rend_anual ?? -999));
+      if (fciSort === "vcp") return dir * ((parseFloat(a.vcp) || 0) - (parseFloat(b.vcp) || 0));
       if (fciSort === "patrimonio") return dir * ((parseFloat(a.patrimonio) || 0) - (parseFloat(b.patrimonio) || 0));
       return 0;
     });
@@ -224,6 +235,7 @@ export default function App() {
               <h2 style={S.secT}>📊 Fondos Comunes de Inversión
                 {fci?.date && <span style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", marginLeft: 10, fontWeight: 400 }}>Datos al {fci.date}</span>}
                 {hasRend && <span style={{ fontSize: 11, color: "#00e676", marginLeft: 10, background: "rgba(0,230,118,0.1)", padding: "2px 10px", borderRadius: 10 }}>Con rendimientos</span>}
+                {!hasRend && fci?.funds?.length > 20 && <span style={{ fontSize: 11, color: "#4fc3f7", marginLeft: 10, background: "rgba(79,195,247,0.1)", padding: "2px 10px", borderRadius: 10 }}>Datos reales</span>}
               </h2>
               <span style={{ fontSize: 13, color: "rgba(79,195,247,0.7)", background: "rgba(79,195,247,0.06)", padding: "4px 12px", borderRadius: 12 }}>{filtered.length} fondos</span>
             </div>
@@ -250,7 +262,7 @@ export default function App() {
                       <th style={{ ...S.th, textAlign: "right", cursor: "pointer", width: 80 }} onClick={() => toggleSort("ytd")}>YTD<SortIcon col="ytd" /></th>
                       <th style={{ ...S.th, textAlign: "right", cursor: "pointer", width: 80 }} onClick={() => toggleSort("anual")}>Anual<SortIcon col="anual" /></th>
                     </> : <>
-                      <th style={{ ...S.th, textAlign: "right", width: 100 }}>Valor CP</th>
+                      <th style={{ ...S.th, textAlign: "right", width: 120, cursor: "pointer" }} onClick={() => toggleSort("vcp")}>Valor CP<SortIcon col="vcp" /></th>
                     </>}
                     <th style={{ ...S.th, textAlign: "right", cursor: "pointer", width: 85 }} onClick={() => toggleSort("patrimonio")}>Patrim.<SortIcon col="patrimonio" /></th>
                   </tr></thead>
@@ -290,8 +302,7 @@ export default function App() {
               </div>
             )}
             <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", textAlign: "center", marginTop: 14, lineHeight: 1.6 }}>
-              Fuente: CAFCI (Cámara Argentina de Fondos Comunes de Inversión) — api.cafci.org.ar
-              {hasRend ? " · Rendimientos calculados por CAFCI según normas CNV" : " · Datos diarios en formato bulk"}
+              Fuente: ArgentinaDatos (api.argentinadatos.com) — Datos de CAFCI actualizados diariamente
             </div>
           </section>
         )}
