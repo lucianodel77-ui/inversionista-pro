@@ -34,6 +34,15 @@ const genSpark = (b, vol = 0.02, n = 20) => { const a = [b]; for (let i = 1; i <
 
 const Skel = ({ w = "100%", h = 14 }) => <div style={{ width: w, height: h, borderRadius: 3, background: "rgba(255,255,255,0.04)", animation: "pulse 1.5s infinite" }} />;
 
+const DataBadge = ({ live }) => (
+  <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap",
+    background: live ? "rgba(0,230,118,0.08)" : "rgba(255,215,64,0.06)",
+    color: live ? "#00e676" : "#ffd740",
+    border: `1px solid ${live ? "rgba(0,230,118,0.18)" : "rgba(255,215,64,0.18)"}` }}>
+    {live ? "● Datos reales" : "⚠ Datos de referencia"}
+  </span>
+);
+
 const TYPES = {
   money_market: { label: "Money Market", color: "#4fc3f7", short: "MM" },
   renta_fija: { label: "Renta Fija", color: "#ffd740", short: "RF" },
@@ -71,25 +80,8 @@ export default function App() {
   const [lastUpdate, setLastUpdate] = useState(null);
   const chatEndRef = useRef(null);
 
-  const [market] = useState(() => ({
-    indices: {
-      sp500: { name: "S&P 500", val: 5842.15, chg: 0.67, sp: genSpark(5800, 0.008) },
-      nasdaq: { name: "NASDAQ", val: 18439.2, chg: 1.12, sp: genSpark(18200, 0.012) },
-      dow: { name: "Dow Jones", val: 42877.5, chg: 0.31, sp: genSpark(42600, 0.006) },
-      merval: { name: "S&P Merval", val: 2156780, chg: 1.85, sp: genSpark(2100000, 0.015), ars: true },
-    },
-    cedears: [
-      { t: "AAPL", n: "Apple", p: 12450, c: 0.82 }, { t: "MELI", n: "MercadoLibre", p: 58200, c: 2.15 },
-      { t: "GOOGL", n: "Alphabet", p: 5890, c: -0.45 }, { t: "MSFT", n: "Microsoft", p: 14200, c: 0.33 },
-      { t: "AMZN", n: "Amazon", p: 6780, c: 1.67 }, { t: "NVDA", n: "NVIDIA", p: 4320, c: 3.21 },
-      { t: "TSLA", n: "Tesla", p: 8150, c: -1.12 }, { t: "JPM", n: "JPMorgan", p: 9870, c: 0.56 },
-    ],
-    bonds: [
-      { t: "AL30", n: "Bonar 2030", p: 68.5, c: 0.73, y: 18.2 }, { t: "GD30", n: "Global 2030", p: 72.3, c: 0.45, y: 15.8 },
-      { t: "AL35", n: "Bonar 2035", p: 61.2, c: -0.32, y: 19.1 }, { t: "GD35", n: "Global 2035", p: 65.8, c: 0.28, y: 16.5 },
-      { t: "GD41", n: "Global 2041", p: 58.9, c: 0.15, y: 14.3 }, { t: "US10Y", n: "Treasury 10Y", p: 95.2, c: -0.12, y: 4.28 },
-    ],
-  }));
+  const [market, setMarket] = useState(null);
+  const [marketLoading, setMarketLoading] = useState(true);
 
   // ── Fetch all data ──
   useEffect(() => {
@@ -101,6 +93,15 @@ export default function App() {
       // Crypto
       try { const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,tether,usd-coin,ripple&vs_currencies=usd&include_24hr_change=true"); if (r.ok) setCrypto(await r.json()); }
       catch { setCrypto({ bitcoin: { usd: 97250, usd_24h_change: 2.34 }, ethereum: { usd: 3650, usd_24h_change: 1.87 }, solana: { usd: 178.5, usd_24h_change: 4.12 }, tether: { usd: 1, usd_24h_change: 0.01 }, "usd-coin": { usd: 1, usd_24h_change: -0.01 }, ripple: { usd: 2.15, usd_24h_change: 1.23 } }); }
+
+      // Market data — índices + CEDEARs via proxy Yahoo Finance
+      try {
+        const TICKERS = "^GSPC,^IXIC,^DJI,^MERV,AAPL.BA,MELI.BA,GOOGL.BA,MSFT.BA,AMZN.BA,NVDA.BA,TSLA.BA,JPM.BA,^TNX";
+        const r = await fetch(`/api/market?tickers=${TICKERS}`);
+        if (r.ok) { const d = await r.json(); setMarket({ data: d, live: true }); }
+        else throw new Error();
+      } catch { setMarket({ data: {}, live: false }); }
+      finally { setMarketLoading(false); }
 
       // FCI — fetch from ArgentinaDatos + benchmark rates
       setFciLoading(true);
@@ -369,23 +370,84 @@ export default function App() {
 
         {/* ═══ ACCIONES ═══ */}
         {tab === "acciones" && (<>
+          {/* Índices internacionales + Merval */}
           <section style={{ marginBottom: 24 }}>
             <h2 style={S.secT}>▲ Índices</h2>
             <div style={S.grid}>
-              {Object.values(market.indices).map(x => (
-                <div key={x.name} style={S.card}>
-                  <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: 500, marginBottom: 5 }}>{x.name}</div>
-                  <div style={S.bigNum}>{x.ars ? x.val.toLocaleString("es-AR") : x.val.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}><Pill v={x.chg} /><Spark data={x.sp} color={x.chg >= 0 ? "#00e676" : "#ff5252"} /></div>
-                </div>
-              ))}
+              {marketLoading
+                ? Array.from({ length: 4 }).map((_, i) => <div key={i} style={S.card}><Skel w="60%" /><div style={{ marginTop: 10 }}><Skel h={24} /></div><div style={{ marginTop: 6 }}><Skel w="40%" h={12} /></div></div>)
+                : [
+                    { key: "^GSPC", name: "S&P 500",   fallbackVal: 5842.15,  fallbackChg: 0.67 },
+                    { key: "^IXIC", name: "NASDAQ",     fallbackVal: 18439.2,  fallbackChg: 1.12 },
+                    { key: "^DJI",  name: "Dow Jones",  fallbackVal: 42877.5,  fallbackChg: 0.31 },
+                    { key: "^MERV", name: "S&P Merval", fallbackVal: 2156780,  fallbackChg: 1.85, ars: true },
+                  ].map(({ key, name, fallbackVal, fallbackChg, ars }) => {
+                    const live = !!(market?.data?.[key]);
+                    const val  = market?.data?.[key]?.price     ?? fallbackVal;
+                    const chg  = market?.data?.[key]?.changePct ?? fallbackChg;
+                    return (
+                      <div key={name} style={S.card}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: 500 }}>{name}</div>
+                          <DataBadge live={live} />
+                        </div>
+                        <div style={S.bigNum}>{ars ? val.toLocaleString("es-AR") : val.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
+                          <Pill v={chg} />
+                          <Spark data={genSpark(val, 0.008)} color={chg >= 0 ? "#00e676" : "#ff5252"} />
+                        </div>
+                      </div>
+                    );
+                  })
+              }
             </div>
           </section>
+
+          {/* CEDEARs en ARS */}
           <section>
-            <h2 style={S.secT}>📊 CEDEARs</h2>
-            <div style={S.tw}><table style={S.table}><thead><tr><th style={S.th}>Ticker</th><th style={S.th}>Empresa</th><th style={{ ...S.th, textAlign: "right" }}>Precio</th><th style={{ ...S.th, textAlign: "right" }}>Var.</th></tr></thead>
-              <tbody>{market.cedears.map(c => <tr key={c.t} style={S.tr}><td style={S.tdT}>{c.t}</td><td style={S.td}>{c.n}</td><td style={{ ...S.td, textAlign: "right", fontFamily: "var(--mono)" }}>{fmt(c.p)}</td><td style={{ ...S.td, textAlign: "right" }}><Pill v={c.c} /></td></tr>)}</tbody>
-            </table></div>
+            <h2 style={S.secT}>📊 CEDEARs — precios en ARS (BYMA)</h2>
+            <div style={S.tw}>
+              <table style={S.table}>
+                <thead><tr>
+                  <th style={S.th}>Ticker</th>
+                  <th style={S.th}>Empresa</th>
+                  <th style={{ ...S.th, textAlign: "right" }}>Precio ARS</th>
+                  <th style={{ ...S.th, textAlign: "right" }}>Var. día</th>
+                  <th style={{ ...S.th, textAlign: "center" }}>Fuente</th>
+                </tr></thead>
+                <tbody>
+                  {marketLoading
+                    ? Array.from({ length: 6 }).map((_, i) => <tr key={i} style={S.tr}><td colSpan={5} style={S.td}><Skel /></td></tr>)
+                    : [
+                        { ba: "AAPL.BA",  t: "AAPL",  n: "Apple",        fb: 12450, fc: 0.82  },
+                        { ba: "MELI.BA",  t: "MELI",  n: "MercadoLibre", fb: 58200, fc: 2.15  },
+                        { ba: "GOOGL.BA", t: "GOOGL", n: "Alphabet",     fb: 5890,  fc: -0.45 },
+                        { ba: "MSFT.BA",  t: "MSFT",  n: "Microsoft",    fb: 14200, fc: 0.33  },
+                        { ba: "AMZN.BA",  t: "AMZN",  n: "Amazon",       fb: 6780,  fc: 1.67  },
+                        { ba: "NVDA.BA",  t: "NVDA",  n: "NVIDIA",       fb: 4320,  fc: 3.21  },
+                        { ba: "TSLA.BA",  t: "TSLA",  n: "Tesla",        fb: 8150,  fc: -1.12 },
+                        { ba: "JPM.BA",   t: "JPM",   n: "JPMorgan",     fb: 9870,  fc: 0.56  },
+                      ].map(({ ba, t, n, fb, fc }) => {
+                        const live  = !!(market?.data?.[ba]);
+                        const price = market?.data?.[ba]?.price     ?? fb;
+                        const chg   = market?.data?.[ba]?.changePct ?? fc;
+                        return (
+                          <tr key={t} style={S.tr} className="fci-row">
+                            <td style={S.tdT}>{t}</td>
+                            <td style={S.td}>{n}</td>
+                            <td style={{ ...S.td, textAlign: "right", fontFamily: "var(--mono)" }}>{fmt(price)}</td>
+                            <td style={{ ...S.td, textAlign: "right" }}><Pill v={chg} /></td>
+                            <td style={{ ...S.td, textAlign: "center" }}><DataBadge live={live} /></td>
+                          </tr>
+                        );
+                      })
+                  }
+                </tbody>
+              </table>
+            </div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 6, textAlign: "right" }}>
+              Precios ARS de CEDEARs que cotizan en BYMA · Fuente: Yahoo Finance · Con delay de mercado
+            </div>
           </section>
         </>)}
 
@@ -393,9 +455,61 @@ export default function App() {
         {tab === "bonos" && (
           <section>
             <h2 style={S.secT}>◆ Bonos & Renta Fija</h2>
-            <div style={S.tw}><table style={S.table}><thead><tr><th style={S.th}>Ticker</th><th style={S.th}>Nombre</th><th style={{ ...S.th, textAlign: "right" }}>Precio</th><th style={{ ...S.th, textAlign: "right" }}>Var.</th><th style={{ ...S.th, textAlign: "right" }}>Yield</th></tr></thead>
-              <tbody>{market.bonds.map(b => <tr key={b.t} style={S.tr}><td style={S.tdT}>{b.t}</td><td style={S.td}>{b.n}</td><td style={{ ...S.td, textAlign: "right", fontFamily: "var(--mono)" }}>USD {b.p.toFixed(2)}</td><td style={{ ...S.td, textAlign: "right" }}><Pill v={b.c} /></td><td style={{ ...S.td, textAlign: "right", color: "#ffd740", fontFamily: "var(--mono)", fontWeight: 600 }}>{b.y.toFixed(1)}%</td></tr>)}</tbody>
-            </table></div>
+
+            {/* Treasury 10Y — dato real */}
+            <section style={{ marginBottom: 24 }}>
+              <h2 style={{ ...S.secT, fontSize: 14, marginBottom: 10 }}>🇺🇸 Referencia USA</h2>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
+                <div style={S.card}>
+                  {marketLoading ? <><Skel w="50%" /><div style={{ marginTop: 10 }}><Skel h={22} /></div></> : (() => {
+                    const tnx  = market?.data?.["^TNX"];
+                    const live = !!tnx;
+                    return (<>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: 500 }}>US Treasury 10Y</div>
+                        <DataBadge live={live} />
+                      </div>
+                      <div style={S.bigNum}>{(tnx?.price ?? 4.28).toFixed(3)}%</div>
+                      <div style={{ marginTop: 4 }}><Pill v={tnx?.changePct ?? -0.12} /></div>
+                    </>);
+                  })()}
+                </div>
+              </div>
+            </section>
+
+            {/* Bonos soberanos argentinos — referencia */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+              <DataBadge live={false} />
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>
+                No existe API pública gratuita para bonos soberanos argentinos. Precios orientativos — verificar en Rava, IOL o tu broker.
+              </span>
+            </div>
+            <div style={S.tw}>
+              <table style={S.table}>
+                <thead><tr>
+                  <th style={S.th}>Ticker</th>
+                  <th style={S.th}>Nombre</th>
+                  <th style={{ ...S.th, textAlign: "right" }}>Precio ref. (USD)</th>
+                  <th style={{ ...S.th, textAlign: "right" }}>Yield ref.</th>
+                </tr></thead>
+                <tbody>
+                  {[
+                    { t: "AL30", n: "Bonar 2030",  p: 68.5, y: 18.2 },
+                    { t: "GD30", n: "Global 2030", p: 72.3, y: 15.8 },
+                    { t: "AL35", n: "Bonar 2035",  p: 61.2, y: 19.1 },
+                    { t: "GD35", n: "Global 2035", p: 65.8, y: 16.5 },
+                    { t: "GD41", n: "Global 2041", p: 58.9, y: 14.3 },
+                  ].map(b => (
+                    <tr key={b.t} style={S.tr}>
+                      <td style={S.tdT}>{b.t}</td>
+                      <td style={S.td}>{b.n}</td>
+                      <td style={{ ...S.td, textAlign: "right", fontFamily: "var(--mono)", color: "rgba(255,255,255,0.4)" }}>USD {b.p.toFixed(2)}</td>
+                      <td style={{ ...S.td, textAlign: "right", fontFamily: "var(--mono)", fontWeight: 600, color: "rgba(255,215,64,0.45)" }}>{b.y.toFixed(1)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
         )}
 
