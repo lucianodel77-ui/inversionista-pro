@@ -96,7 +96,7 @@ export default function App() {
 
       // Market data — índices + CEDEARs via proxy Yahoo Finance
       try {
-        const TICKERS = "^GSPC,^IXIC,^DJI,^MERV,AAPL.BA,MELI.BA,GOOGL.BA,MSFT.BA,AMZN.BA,NVDA.BA,TSLA.BA,JPM.BA,^TNX";
+        const TICKERS = "^GSPC,^IXIC,^DJI,^MERV,AAPL.BA,MELI.BA,GOOGL.BA,MSFT.BA,AMZN.BA,NVDA.BA,TSLA.BA,JPM.BA,META.BA,NFLX.BA,V.BA,MA.BA,KO.BA,DIS.BA,WMT.BA,PFE.BA,XOM.BA,GOLD.BA,BAC.BA,GS.BA,PYPL.BA,UBER.BA,BABA.BA,COIN.BA,AMD.BA,INTC.BA,ORCL.BA,QCOM.BA,SBUX.BA,NKE.BA,CVX.BA,GLOB.BA,AXP.BA,SPOT.BA,MCD.BA,JNJ.BA,ADBE.BA,SHOP.BA,C.BA,MRNA.BA,SLB.BA";
         const r = await fetch(`/api/market?tickers=${TICKERS}`);
         if (r.ok) { const d = await r.json(); setMarket({ data: d, live: true }); }
         else throw new Error();
@@ -230,7 +230,7 @@ export default function App() {
   const { sim, setSim, simResults, inflacionData } = useSimuladorData(fci);
 
   const hasFciData = fci?.funds?.length > 20;
-  const tabs = [{ id: "fci", l: "📊 Fondos (FCI)" }, { id: "dolares", l: "$ Dólares" }, { id: "acciones", l: "▲ Acciones" }, { id: "bonos", l: "◆ Bonos" }, { id: "crypto", l: "₿ Crypto" }, { id: "simulador", l: "🧮 Simulador" }];
+  const tabs = [{ id: "fci", l: "📊 Fondos (FCI)" }, { id: "dolares", l: "$ Dólares" }, { id: "acciones", l: "▲ Acciones" }, { id: "crypto", l: "₿ Crypto" }, { id: "simulador", l: "🧮 Simulador" }];
   const fTypes = [{ id: "todos", l: "Todos" }, { id: "money_market", l: "💵 Money Market" }, { id: "renta_fija", l: "📈 Renta Fija" }, { id: "renta_variable", l: "🔥 R. Variable" }, { id: "renta_mixta", l: "⚖️ Mixta" }];
   const qPrompts = ["¿Qué FCI money market recomendás?", "Dólar MEP vs blue", "¿Conviene Bitcoin?", "Mejores bonos USD", "Portafolio moderado", "FCI de renta fija"];
   const dateStr = new Date().toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
@@ -411,6 +411,7 @@ export default function App() {
                 <thead><tr>
                   <th style={S.th}>Ticker</th>
                   <th style={S.th}>Empresa</th>
+                  <th style={S.th}>Sector</th>
                   <th style={{ ...S.th, textAlign: "right" }}>Precio ARS</th>
                   <th style={{ ...S.th, textAlign: "right" }}>Var. día</th>
                   <th style={{ ...S.th, textAlign: "center" }}>Fuente</th>
@@ -419,15 +420,48 @@ export default function App() {
                   {marketLoading
                     ? Array.from({ length: 6 }).map((_, i) => <tr key={i} style={S.tr}><td colSpan={5} style={S.td}><Skel /></td></tr>)
                     : [
-                        { ba: "AAPL.BA",  t: "AAPL",  n: "Apple",        fb: 12450, fc: 0.82  },
-                        { ba: "MELI.BA",  t: "MELI",  n: "MercadoLibre", fb: 58200, fc: 2.15  },
-                        { ba: "GOOGL.BA", t: "GOOGL", n: "Alphabet",     fb: 5890,  fc: -0.45 },
-                        { ba: "MSFT.BA",  t: "MSFT",  n: "Microsoft",    fb: 14200, fc: 0.33  },
-                        { ba: "AMZN.BA",  t: "AMZN",  n: "Amazon",       fb: 6780,  fc: 1.67  },
-                        { ba: "NVDA.BA",  t: "NVDA",  n: "NVIDIA",       fb: 4320,  fc: 3.21  },
-                        { ba: "TSLA.BA",  t: "TSLA",  n: "Tesla",        fb: 8150,  fc: -1.12 },
-                        { ba: "JPM.BA",   t: "JPM",   n: "JPMorgan",     fb: 9870,  fc: 0.56  },
-                      ].map(({ ba, t, n, fb, fc }) => {
+                        { ba: "AAPL.BA",  t: "AAPL",  n: "Apple",          g: "Tech",     fb: 12450, fc: 0.82  },
+                        { ba: "MSFT.BA",  t: "MSFT",  n: "Microsoft",      g: "Tech",     fb: 14200, fc: 0.33  },
+                        { ba: "GOOGL.BA", t: "GOOGL", n: "Alphabet",       g: "Tech",     fb: 5890,  fc: -0.45 },
+                        { ba: "AMZN.BA",  t: "AMZN",  n: "Amazon",         g: "Tech",     fb: 6780,  fc: 1.67  },
+                        { ba: "NVDA.BA",  t: "NVDA",  n: "NVIDIA",         g: "Tech",     fb: 4320,  fc: 3.21  },
+                        { ba: "META.BA",  t: "META",  n: "Meta",           g: "Tech",     fb: 9540,  fc: 1.15  },
+                        { ba: "TSLA.BA",  t: "TSLA",  n: "Tesla",          g: "Tech",     fb: 8150,  fc: -1.12 },
+                        { ba: "NFLX.BA",  t: "NFLX",  n: "Netflix",        g: "Tech",     fb: 23100, fc: 0.78  },
+                        { ba: "AMD.BA",   t: "AMD",   n: "AMD",            g: "Tech",     fb: 5280,  fc: 2.43  },
+                        { ba: "INTC.BA",  t: "INTC",  n: "Intel",          g: "Tech",     fb: 2870,  fc: -0.88 },
+                        { ba: "ORCL.BA",  t: "ORCL",  n: "Oracle",         g: "Tech",     fb: 7620,  fc: 0.55  },
+                        { ba: "QCOM.BA",  t: "QCOM",  n: "Qualcomm",       g: "Tech",     fb: 5180,  fc: 0.92  },
+                        { ba: "ADBE.BA",  t: "ADBE",  n: "Adobe",          g: "Tech",     fb: 10450, fc: -0.34 },
+                        { ba: "SHOP.BA",  t: "SHOP",  n: "Shopify",        g: "Tech",     fb: 4890,  fc: 1.67  },
+                        { ba: "MELI.BA",  t: "MELI",  n: "MercadoLibre",   g: "LatAm",    fb: 58200, fc: 2.15  },
+                        { ba: "GLOB.BA",  t: "GLOB",  n: "Globant",        g: "LatAm",    fb: 31400, fc: 0.44  },
+                        { ba: "BABA.BA",  t: "BABA",  n: "Alibaba",        g: "Tech",     fb: 7210,  fc: 1.33  },
+                        { ba: "JPM.BA",   t: "JPM",   n: "JPMorgan",       g: "Finanzas", fb: 9870,  fc: 0.56  },
+                        { ba: "BAC.BA",   t: "BAC",   n: "Bank of America", g: "Finanzas", fb: 3460,  fc: -0.23 },
+                        { ba: "GS.BA",    t: "GS",    n: "Goldman Sachs",  g: "Finanzas", fb: 18970, fc: 0.71  },
+                        { ba: "V.BA",     t: "V",     n: "Visa",           g: "Finanzas", fb: 11850, fc: 0.38  },
+                        { ba: "MA.BA",    t: "MA",    n: "Mastercard",     g: "Finanzas", fb: 18340, fc: 0.62  },
+                        { ba: "AXP.BA",   t: "AXP",   n: "Amex",          g: "Finanzas", fb: 10760, fc: 0.29  },
+                        { ba: "C.BA",     t: "C",     n: "Citigroup",      g: "Finanzas", fb: 3970,  fc: -0.44 },
+                        { ba: "COIN.BA",  t: "COIN",  n: "Coinbase",       g: "Finanzas", fb: 14580, fc: 4.21  },
+                        { ba: "PYPL.BA",  t: "PYPL",  n: "PayPal",         g: "Finanzas", fb: 5290,  fc: -0.67 },
+                        { ba: "KO.BA",    t: "KO",    n: "Coca-Cola",      g: "Consumo",  fb: 3840,  fc: 0.15  },
+                        { ba: "DIS.BA",   t: "DIS",   n: "Disney",         g: "Consumo",  fb: 5670,  fc: 0.89  },
+                        { ba: "WMT.BA",   t: "WMT",   n: "Walmart",        g: "Consumo",  fb: 7230,  fc: 0.21  },
+                        { ba: "SBUX.BA",  t: "SBUX",  n: "Starbucks",      g: "Consumo",  fb: 4120,  fc: -0.55 },
+                        { ba: "NKE.BA",   t: "NKE",   n: "Nike",           g: "Consumo",  fb: 3750,  fc: 0.44  },
+                        { ba: "MCD.BA",   t: "MCD",   n: "McDonald's",     g: "Consumo",  fb: 10970, fc: 0.31  },
+                        { ba: "UBER.BA",  t: "UBER",  n: "Uber",           g: "Consumo",  fb: 4830,  fc: 1.78  },
+                        { ba: "SPOT.BA",  t: "SPOT",  n: "Spotify",        g: "Consumo",  fb: 7650,  fc: 0.93  },
+                        { ba: "PFE.BA",   t: "PFE",   n: "Pfizer",         g: "Salud",    fb: 2120,  fc: -0.88 },
+                        { ba: "JNJ.BA",   t: "JNJ",   n: "J&J",            g: "Salud",    fb: 6450,  fc: 0.17  },
+                        { ba: "MRNA.BA",  t: "MRNA",  n: "Moderna",        g: "Salud",    fb: 3180,  fc: -1.23 },
+                        { ba: "XOM.BA",   t: "XOM",   n: "ExxonMobil",     g: "Energía",  fb: 5490,  fc: 0.64  },
+                        { ba: "CVX.BA",   t: "CVX",   n: "Chevron",        g: "Energía",  fb: 6180,  fc: 0.48  },
+                        { ba: "SLB.BA",   t: "SLB",   n: "Schlumberger",   g: "Energía",  fb: 2870,  fc: 0.35  },
+                        { ba: "GOLD.BA",  t: "GOLD",  n: "Barrick Gold",   g: "Minería",  fb: 2310,  fc: 1.92  },
+                      ].map(({ ba, t, n, g, fb, fc }) => {
                         const live  = !!(market?.data?.[ba]);
                         const price = market?.data?.[ba]?.price     ?? fb;
                         const chg   = market?.data?.[ba]?.changePct ?? fc;
@@ -435,6 +469,7 @@ export default function App() {
                           <tr key={t} style={S.tr} className="fci-row">
                             <td style={S.tdT}>{t}</td>
                             <td style={S.td}>{n}</td>
+                            <td style={{ ...S.td, fontSize: 11, color: "rgba(255,255,255,0.45)" }}>{g}</td>
                             <td style={{ ...S.td, textAlign: "right", fontFamily: "var(--mono)" }}>{fmt(price)}</td>
                             <td style={{ ...S.td, textAlign: "right" }}><Pill v={chg} /></td>
                             <td style={{ ...S.td, textAlign: "center" }}><DataBadge live={live} /></td>
@@ -451,67 +486,6 @@ export default function App() {
           </section>
         </>)}
 
-        {/* ═══ BONOS ═══ */}
-        {tab === "bonos" && (
-          <section>
-            <h2 style={S.secT}>◆ Bonos & Renta Fija</h2>
-
-            {/* Treasury 10Y — dato real */}
-            <section style={{ marginBottom: 24 }}>
-              <h2 style={{ ...S.secT, fontSize: 14, marginBottom: 10 }}>🇺🇸 Referencia USA</h2>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
-                <div style={S.card}>
-                  {marketLoading ? <><Skel w="50%" /><div style={{ marginTop: 10 }}><Skel h={22} /></div></> : (() => {
-                    const tnx  = market?.data?.["^TNX"];
-                    const live = !!tnx;
-                    return (<>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: 500 }}>US Treasury 10Y</div>
-                        <DataBadge live={live} />
-                      </div>
-                      <div style={S.bigNum}>{(tnx?.price ?? 4.28).toFixed(3)}%</div>
-                      <div style={{ marginTop: 4 }}><Pill v={tnx?.changePct ?? -0.12} /></div>
-                    </>);
-                  })()}
-                </div>
-              </div>
-            </section>
-
-            {/* Bonos soberanos argentinos — referencia */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-              <DataBadge live={false} />
-              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>
-                No existe API pública gratuita para bonos soberanos argentinos. Precios orientativos — verificar en Rava, IOL o tu broker.
-              </span>
-            </div>
-            <div style={S.tw}>
-              <table style={S.table}>
-                <thead><tr>
-                  <th style={S.th}>Ticker</th>
-                  <th style={S.th}>Nombre</th>
-                  <th style={{ ...S.th, textAlign: "right" }}>Precio ref. (USD)</th>
-                  <th style={{ ...S.th, textAlign: "right" }}>Yield ref.</th>
-                </tr></thead>
-                <tbody>
-                  {[
-                    { t: "AL30", n: "Bonar 2030",  p: 68.5, y: 18.2 },
-                    { t: "GD30", n: "Global 2030", p: 72.3, y: 15.8 },
-                    { t: "AL35", n: "Bonar 2035",  p: 61.2, y: 19.1 },
-                    { t: "GD35", n: "Global 2035", p: 65.8, y: 16.5 },
-                    { t: "GD41", n: "Global 2041", p: 58.9, y: 14.3 },
-                  ].map(b => (
-                    <tr key={b.t} style={S.tr}>
-                      <td style={S.tdT}>{b.t}</td>
-                      <td style={S.td}>{b.n}</td>
-                      <td style={{ ...S.td, textAlign: "right", fontFamily: "var(--mono)", color: "rgba(255,255,255,0.4)" }}>USD {b.p.toFixed(2)}</td>
-                      <td style={{ ...S.td, textAlign: "right", fontFamily: "var(--mono)", fontWeight: 600, color: "rgba(255,215,64,0.45)" }}>{b.y.toFixed(1)}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
 
         {/* ═══ CRYPTO ═══ */}
         {tab === "crypto" && (
