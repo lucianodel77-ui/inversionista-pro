@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useSimuladorData } from "./hooks/useSimuladorData";
+import { Simulador } from "./components/Simulador";
 
 // ═══════════════════════════════════════════════════════════════════
 // INVERSIONISTA PRO v3 — FCI con Rendimientos + Dashboard + Asesor IA
@@ -224,8 +226,10 @@ export default function App() {
   const toggleSort = c => { if (fciSort === c) setFciSortDir(d => d === "desc" ? "asc" : "desc"); else { setFciSort(c); setFciSortDir(c === "nombre" ? "asc" : "desc"); } };
   const SortIcon = ({ col }) => fciSort === col ? <span style={{ marginLeft: 3, fontSize: 9 }}>{fciSortDir === "desc" ? "▼" : "▲"}</span> : null;
 
+  const { sim, setSim, simResults, inflacionData } = useSimuladorData(fci);
+
   const hasFciData = fci?.funds?.length > 20;
-  const tabs = [{ id: "fci", l: "📊 Fondos (FCI)" }, { id: "dolares", l: "$ Dólares" }, { id: "acciones", l: "▲ Acciones" }, { id: "bonos", l: "◆ Bonos" }, { id: "crypto", l: "₿ Crypto" }];
+  const tabs = [{ id: "fci", l: "📊 Fondos (FCI)" }, { id: "dolares", l: "$ Dólares" }, { id: "acciones", l: "▲ Acciones" }, { id: "bonos", l: "◆ Bonos" }, { id: "crypto", l: "₿ Crypto" }, { id: "simulador", l: "🧮 Simulador" }];
   const fTypes = [{ id: "todos", l: "Todos" }, { id: "money_market", l: "💵 Money Market" }, { id: "renta_fija", l: "📈 Renta Fija" }, { id: "renta_variable", l: "🔥 R. Variable" }, { id: "renta_mixta", l: "⚖️ Mixta" }];
   const qPrompts = ["¿Qué FCI money market recomendás?", "Dólar MEP vs blue", "¿Conviene Bitcoin?", "Mejores bonos USD", "Portafolio moderado", "FCI de renta fija"];
   const dateStr = new Date().toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
@@ -414,6 +418,17 @@ export default function App() {
               }) : Array.from({ length: 6 }).map((_, i) => <div key={i} style={S.card}><Skel w="40%" /><div style={{ marginTop: 10 }}><Skel h={22} /></div></div>)}
             </div>
           </section>
+        )}
+
+        {/* ═══ SIMULADOR ═══ */}
+        {tab === "simulador" && (
+          <Simulador
+            sim={sim}
+            setSim={setSim}
+            simResults={simResults}
+            inflacionData={inflacionData}
+            benchmarkTNA={fci?.benchmarkTNA}
+          />
         )}
 
         <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", textAlign: "center", padding: "20px", lineHeight: 1.6 }}>
