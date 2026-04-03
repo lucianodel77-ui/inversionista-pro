@@ -98,7 +98,7 @@ export default function App() {
   // — FCI Filters —
   const [fciFilter, setFciFilter] = useState("todos");
   const [fciSearch, setFciSearch] = useState("");
-  const [fciSort, setFciSort] = useState("tea");
+  const [fciSort, setFciSort] = useState("mensual");
   const [fciSortDir, setFciSortDir] = useState("desc");
 
   // — Portfolio —
@@ -127,45 +127,112 @@ export default function App() {
         if (dRes.status === "fulfilled" && dRes.value.ok) setDollar(await dRes.value.json());
         if (cRes.status === "fulfilled" && cRes.value.ok) setCrypto(await cRes.value.json());
 
-        // FCI: Money Market + Renta Fija en paralelo
+        // FCI: 5 categorías con histórico real (VCP penultimo + 30d + YTD + 1Y)
         setFciLoading(true);
         setFciError(null);
 
-        const [mmRes, rfRes] = await Promise.allSettled([
-          fetch("https://api.argentinadatos.com/v1/finanzas/fci/mercadoDinero/ultimo", { signal }),
-          fetch("https://api.argentinadatos.com/v1/finanzas/fci/rentaFija/ultimo", { signal }),
+        const BASE = "https://api.argentinadatos.com/v1/finanzas/fci";
+        const fciCategories = [
+          { path: "mercadoDinero",  type: "money_market"   },
+          { path: "rentaFija",      type: "renta_fija"     },
+          { path: "rentaVariable",  type: "renta_variable" },
+          { path: "rentaMixta",     type: "renta_mixta"    },
+          { path: "otros",          type: "otros"          },
+        ];
+
+        // Fechas de referencia
+        const todayD = new Date();
+        const fmtDate = d => d.toISOString().split("T")[0];
+        const d30  = new Date(todayD); d30.setDate(todayD.getDate() - 30);
+        const dYtd = new Date(todayD.getFullYear() - 1, 11, 31); // 31-dic año anterior
+        const d365 = new Date(todayD); d365.setDate(todayD.getDate() - 365);
+
+        // Fetch último + penúltimo para todas las categorías
+        const [ultimoResults, penultimoResults] = await Promise.all([
+          Promise.all(fciCategories.map(c =>
+            fetch(`${BASE}/${c.path}/ultimo`, { signal }).then(r => r.ok ? r.json() : []).catch(() => [])
+          )),
+          Promise.all(fciCategories.map(c =>
+            fetch(`/api/fci-penultimo?tipo=${c.path}`, { signal }).then(r => r.ok ? r.json() : []).catch(() => [])
+          )),
         ]);
 
-        const processFunds = (data, type) =>
-          (Array.isArray(data) ? data : []).map((f, idx) => {
-            const variacion = f.variacion ?? f.rend_diario ?? (0.15 + Math.abs(Math.sin(idx * 0.7)) * 0.08);
-            const { tna, tea } = calculateRates(variacion);
-            const seed = (f.fondo || "").split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-            return {
-              ...f,
-              type,
-              variacion,
-              tna,
-              tea: tea ?? 65 + Math.abs(Math.sin(seed * 0.1)) * 5,
-              patrimonio: f.patrimonio ?? f.vCuotaparte ?? (seed % 100000) * 1000,
-              history: buildHistory(seed, tea ?? 68),
-            };
-          });
+        // Fetch histórico via proxy (30d, YTD, 1Y) para las 5 categorías en paralelo
+        const histResults = await Promise.all(
+          fciCategories.flatMap(c => [
+            fetch(`/api/fci-history?tipo=${c.path}&fecha=${fmtDate(d30)}`,  { signal }).then(r => r.ok ? r.json() : []).catch(() => []),
+            fetch(`/api/fci-history?tipo=${c.path}&fecha=${fmtDate(dYtd)}`, { signal }).then(r => r.ok ? r.json() : []).catch(() => []),
+            fetch(`/api/fci-history?tipo=${c.path}&fecha=${fmtDate(d365)}`, { signal }).then(r => r.ok ? r.json() : []).catch(() => []),
+          ])
+        );
 
         let allFunds = [];
-        if (mmRes.status === "fulfilled" && mmRes.value.ok) {
-          allFunds = allFunds.concat(processFunds(await mmRes.value.json(), "money_market"));
-        }
-        if (rfRes.status === "fulfilled" && rfRes.value.ok) {
-          allFunds = allFunds.concat(processFunds(await rfRes.value.json(), "renta_fija"));
+        let fciDate = "";
+
+        for (let i = 0; i < fciCategories.length; i++) {
+          const ultimoRaw   = Array.isArray(ultimoResults[i])   ? ultimoResults[i]   : [];
+          const penultRaw   = Array.isArray(penultimoResults[i]) ? penultimoResults[i] : [];
+          const hist30d     = Array.isArray(histResults[i * 3])     ? histResults[i * 3]     : [];
+          const histYtd     = Array.isArray(histResults[i * 3 + 1]) ? histResults[i * 3 + 1] : [];
+          const hist365d    = Array.isArray(histResults[i * 3 + 2]) ? histResults[i * 3 + 2] : [];
+
+          // Mapas para lookup rápido por nombre de fondo
+          const prevMap  = {}, map30d = {}, mapYtd = {}, map365d = {};
+          penultRaw.forEach(f => { if (f.fondo && f.vcp) prevMap[f.fondo]  = parseFloat(f.vcp); });
+          hist30d.forEach(f  => { if (f.fondo && f.vcp) map30d[f.fondo]   = parseFloat(f.vcp); });
+          histYtd.forEach(f  => { if (f.fondo && f.vcp) mapYtd[f.fondo]   = parseFloat(f.vcp); });
+          hist365d.forEach(f => { if (f.fondo && f.vcp) map365d[f.fondo]  = parseFloat(f.vcp); });
+
+          const funds = ultimoRaw
+            .filter(f => f.fondo && f.vcp)
+            .map(f => {
+              const vcpNow  = parseFloat(f.vcp);
+              const vcpPrev = prevMap[f.fondo];
+              const vcp30d  = map30d[f.fondo];
+              const vcpYtd  = mapYtd[f.fondo];
+              const vcp365d = map365d[f.fondo];
+
+              // Rendimiento diario real: (VCP_hoy / VCP_ayer) - 1
+              const rDaily = (vcpPrev && vcpNow > 0) ? (vcpNow / vcpPrev) - 1 : null;
+              const tea    = rDaily != null ? (Math.pow(1 + rDaily, 365) - 1) * 100 : null;
+              const rend_diario  = rDaily != null ? rDaily * 100 : null;
+              const rend_mensual = (vcp30d  && vcpNow > 0) ? ((vcpNow / vcp30d)  - 1) * 100 : null;
+              const rend_ytd     = (vcpYtd  && vcpNow > 0) ? ((vcpNow / vcpYtd)  - 1) * 100 : null;
+              const rend_anual   = (vcp365d && vcpNow > 0) ? ((vcpNow / vcp365d) - 1) * 100 : null;
+
+              // Sparkline con VCP reales (5 puntos), fallback a simulación
+              const realHistory = [vcp365d, vcpYtd, vcp30d, vcpPrev, vcpNow].filter(Boolean);
+              const seed = f.fondo.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+              const history = realHistory.length >= 3 ? realHistory : buildHistory(seed, tea ?? 68);
+
+              return {
+                fondo: f.fondo,
+                fecha: f.fecha || "",
+                vcp: String(f.vcp),
+                patrimonio: f.patrimonio ? parseFloat(f.patrimonio) : null,
+                horizonte: f.horizonte || "",
+                gerente: f.gerente || "",
+                type: fciCategories[i].type,
+                rend_diario, tea, rend_mensual, rend_ytd, rend_anual,
+                history,
+                histReal: realHistory.length >= 3,
+              };
+            });
+
+          allFunds = [...allFunds, ...funds];
+          if (!fciDate && funds.length > 0) fciDate = funds[0].fecha;
         }
 
         if (allFunds.length === 0) {
           setFciError("No se pudieron cargar los fondos. Reintentá más tarde.");
         } else {
-          const mmTeas = allFunds.filter(f => f.type === "money_market" && f.tea).map(f => f.tea);
+          const mmTeas = allFunds.filter(f => f.type === "money_market" && f.tea != null).map(f => f.tea);
           const benchmarkTEA = mmTeas.length ? mmTeas.reduce((a, b) => a + b, 0) / mmTeas.length : 70;
-          setFci({ funds: allFunds, benchmarkTEA: +benchmarkTEA.toFixed(2), date: new Date().toLocaleDateString("es-AR") });
+          setFci({
+            funds: allFunds,
+            benchmarkTEA: +benchmarkTEA.toFixed(2),
+            date: fciDate || new Date().toLocaleDateString("es-AR"),
+          });
         }
 
         setLastUpdate(new Date());
@@ -213,7 +280,7 @@ export default function App() {
       return dir * (valA - valB);
     });
 
-    return result.slice(0, 120);
+    return result;
   }, [fci, fciFilter, deferredSearch, fciSort, fciSortDir]);
 
   // ── ALERTAS ────────────────────────────────────────────────────
@@ -260,7 +327,13 @@ export default function App() {
   const askAboutAsset = useCallback((asset) => {
     const settlement = getSettlement(asset.fondo, asset.type);
     const typeLabel = TYPES[asset.type]?.label || asset.type;
-    const prompt = `Analizame el fondo "${asset.fondo}" (${typeLabel}). TEA actual: ${asset.tea?.toFixed(2)}%, Liquidación: ${settlement}. ¿Conviene posicionarse hoy?`;
+    const rends = [
+      asset.tea     != null ? `TEA: ${asset.tea.toFixed(1)}%`           : null,
+      asset.rend_mensual != null ? `30D: ${fmtPct(asset.rend_mensual)}` : null,
+      asset.rend_ytd     != null ? `YTD: ${fmtPct(asset.rend_ytd)}`     : null,
+      asset.rend_anual   != null ? `1Y: ${fmtPct(asset.rend_anual)}`    : null,
+    ].filter(Boolean).join(" · ");
+    const prompt = `Analizame el fondo "${asset.fondo}" (${typeLabel}). Liquidación: ${settlement}. Rendimientos: ${rends || "sin datos"}. ¿Conviene posicionarse hoy comparado con alternativas del mercado?`;
     setChatOpen(true);
     setTimeout(() => sendMessage(prompt), 50);
   }, [sendMessage]);
@@ -411,9 +484,11 @@ export default function App() {
               />
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {[
-                  { key: "todos",         label: "Todos" },
-                  { key: "money_market",  label: "MM" },
-                  { key: "renta_fija",    label: "RF" },
+                  { key: "todos",          label: "Todos" },
+                  { key: "money_market",   label: "💵 MM" },
+                  { key: "renta_fija",     label: "📈 RF" },
+                  { key: "renta_variable", label: "🔥 RV" },
+                  { key: "renta_mixta",    label: "⚖️ Mix" },
                 ].map(t => (
                   <button key={t.key} onClick={() => setFciFilter(t.key)} style={{ ...S.filterBtn, ...(fciFilter === t.key ? S.filterOn : {}) }}>
                     {t.label}
@@ -431,22 +506,24 @@ export default function App() {
                 <table style={S.table}>
                   <thead>
                     <tr>
-                      <th style={S.th}>Fondo</th>
+                      <th style={{ ...S.th, minWidth: 200 }}>Fondo</th>
                       <th style={S.th}>Tipo</th>
                       <th style={S.th}>Liq.</th>
-                      <SortTh label="Var. Diaria" field="variacion" current={fciSort} dir={fciSortDir} onSort={handleSort} align="right" />
-                      <SortTh label="TEA Proy." field="tea" current={fciSort} dir={fciSortDir} onSort={handleSort} align="right" />
-                      <SortTh label="Patrimonio" field="patrimonio" current={fciSort} dir={fciSortDir} onSort={handleSort} align="right" />
+                      <SortTh label="Diario" field="rend_diario" current={fciSort} dir={fciSortDir} onSort={handleSort} align="right" />
+                      <SortTh label="TEA"    field="tea"         current={fciSort} dir={fciSortDir} onSort={handleSort} align="right" />
+                      <SortTh label="30D"    field="rend_mensual" current={fciSort} dir={fciSortDir} onSort={handleSort} align="right" />
+                      <SortTh label="YTD"    field="rend_ytd"    current={fciSort} dir={fciSortDir} onSort={handleSort} align="right" />
+                      <SortTh label="1 AÑO"  field="rend_anual"  current={fciSort} dir={fciSortDir} onSort={handleSort} align="right" />
                       <th style={{ ...S.th, textAlign: "center" }}>Tendencia</th>
                       <th style={{ ...S.th, textAlign: "right" }}>IA</th>
                     </tr>
                   </thead>
                   <tbody>
                     {fciLoading ? (
-                      <LoadingRows cols={8} />
+                      <LoadingRows cols={10} />
                     ) : filteredFci.length === 0 ? (
                       <tr>
-                        <td colSpan={8} style={{ ...S.td, textAlign: "center", color: "#64748b", padding: 30 }}>
+                        <td colSpan={10} style={{ ...S.td, textAlign: "center", color: "#64748b", padding: 30 }}>
                           No se encontraron fondos para los filtros aplicados.
                         </td>
                       </tr>
@@ -471,20 +548,24 @@ export default function App() {
                               </span>
                             </td>
                             <td style={{ ...S.td, textAlign: "right" }}>
-                              <Pill v={f.variacion} sm />
+                              <Pill v={f.rend_diario} sm />
                             </td>
                             <td style={{ ...S.td, textAlign: "right" }}>
                               <span style={{ ...S.monoNum, color: f.tea > (fci?.benchmarkTEA || 70) ? "#00e676" : "#ffd740", fontSize: 13 }}>
-                                {f.tea?.toFixed(2)}%
+                                {f.tea != null ? `${f.tea.toFixed(2)}%` : "—"}
                               </span>
                             </td>
                             <td style={{ ...S.td, textAlign: "right" }}>
-                              <span style={{ ...S.monoNum, fontSize: 12, color: "#64748b" }}>
-                                {f.patrimonio ? fmt(f.patrimonio).replace("$", "").trim() : "—"}
-                              </span>
+                              <Pill v={f.rend_mensual} sm />
+                            </td>
+                            <td style={{ ...S.td, textAlign: "right" }}>
+                              <Pill v={f.rend_ytd} sm />
+                            </td>
+                            <td style={{ ...S.td, textAlign: "right" }}>
+                              <Pill v={f.rend_anual} sm />
                             </td>
                             <td style={{ ...S.td, textAlign: "center" }}>
-                              <TrendChart data={f.history} color={typeInfo.color} w={72} h={26} />
+                              <TrendChart data={f.history} color={f.histReal ? "auto" : typeInfo.color} w={72} h={26} />
                             </td>
                             <td style={{ ...S.td, textAlign: "right" }}>
                               <button style={S.miniBtn} onClick={() => askAboutAsset(f)} title="Consultar al Asesor IA">
@@ -501,8 +582,12 @@ export default function App() {
             )}
 
             {!fciLoading && filteredFci.length > 0 && (
-              <div style={{ marginTop: 10, fontSize: 11, color: "#64748b", textAlign: "right" }}>
-                {filteredFci.length} fondos · datos al {fci?.date}
+              <div style={{ marginTop: 10, fontSize: 11, color: "#64748b", textAlign: "right", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>
+                  {fci?.funds?.filter(f => f.histReal).length || 0} fondos con histórico real ·{" "}
+                  {fci?.funds?.filter(f => !f.histReal).length || 0} sin historial suficiente
+                </span>
+                <span>{filteredFci.length} fondos · datos al {fci?.date}</span>
               </div>
             )}
           </section>

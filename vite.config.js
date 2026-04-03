@@ -14,6 +14,25 @@ export default defineConfig({
           'anthropic-version': '2023-06-01',
         },
       },
+      // Proxy ArgentinaDatos FCI histórico (evita CORS en endpoints con fecha)
+      '/api/fci-history': {
+        target: 'https://api.argentinadatos.com',
+        changeOrigin: true,
+        rewrite: (path) => {
+          const qs = path.split('?')[1] || '';
+          const p = new URLSearchParams(qs);
+          return `/v1/finanzas/fci/${p.get('tipo')}/${p.get('fecha')}`;
+        },
+      },
+      '/api/fci-penultimo': {
+        target: 'https://api.argentinadatos.com',
+        changeOrigin: true,
+        rewrite: (path) => {
+          const qs = path.split('?')[1] || '';
+          const p = new URLSearchParams(qs);
+          return `/v1/finanzas/fci/${p.get('tipo')}/penultimo`;
+        },
+      },
     },
   },
 })
