@@ -675,7 +675,7 @@ export default function App() {
 
                 <button
                   style={S.iaBtn}
-                  onClick={() => sendMessage(`¿Sigue siendo rentable hacer puré hoy con MEP a ${fmt(mepRate)} y Blue a ${fmt(blueRate)}? ¿Qué riesgos operativos debo considerar?`)}
+                  onClick={() => { setChatOpen(true); sendMessage(`¿Sigue siendo rentable hacer puré hoy con MEP a ${fmt(mepRate)} y Blue a ${fmt(blueRate)}? ¿Qué riesgos operativos debo considerar?`); }}
                 >
                   🧠 Consultá riesgos con IA
                 </button>
