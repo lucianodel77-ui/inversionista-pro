@@ -127,7 +127,7 @@ export default function App() {
         if (dRes.status === "fulfilled" && dRes.value.ok) setDollar(await dRes.value.json());
         if (cRes.status === "fulfilled" && cRes.value.ok) setCrypto(await cRes.value.json());
 
-        // FCI: 5 categorías con histórico real (VCP penultimo + 30d + YTD + 1Y)
+        // FCI: 5 categorías — último + penúltimo para rendimiento diario real
         setFciLoading(true);
         setFciError(null);
 
@@ -140,14 +140,11 @@ export default function App() {
           { path: "otros",          type: "otros"          },
         ];
 
-        // Fechas de referencia
+        // Días transcurridos desde el 1-ene (para proyección YTD)
         const todayD = new Date();
-        const fmtDate = d => d.toISOString().split("T")[0];
-        const d30  = new Date(todayD); d30.setDate(todayD.getDate() - 30);
-        const dYtd = new Date(todayD.getFullYear() - 1, 11, 31); // 31-dic año anterior
-        const d365 = new Date(todayD); d365.setDate(todayD.getDate() - 365);
+        const daysYtd = Math.floor((todayD - new Date(todayD.getFullYear(), 0, 1)) / 86400000) || 1;
 
-        // Fetch último + penúltimo para todas las categorías en paralelo
+        // Fetch último + penúltimo en paralelo para las 5 categorías
         const [ultimoResults, penultimoResults] = await Promise.all([
           Promise.all(fciCategories.map(c =>
             fetch(`${BASE}/${c.path}/ultimo`, { signal })
@@ -159,58 +156,40 @@ export default function App() {
           )),
         ]);
 
-        // Fetch histórico via Serverless Function (30d, YTD, 1Y) — devuelve { date, data[] }
-        const histResults = await Promise.all(
-          fciCategories.flatMap(c => [
-            fetch(`/api/fci-history?tipo=${c.path}&fecha=${fmtDate(d30)}`,  { signal })
-              .then(r => r.ok ? r.json() : { data: [] }).catch(() => ({ data: [] })),
-            fetch(`/api/fci-history?tipo=${c.path}&fecha=${fmtDate(dYtd)}`, { signal })
-              .then(r => r.ok ? r.json() : { data: [] }).catch(() => ({ data: [] })),
-            fetch(`/api/fci-history?tipo=${c.path}&fecha=${fmtDate(d365)}`, { signal })
-              .then(r => r.ok ? r.json() : { data: [] }).catch(() => ({ data: [] })),
-          ])
-        );
-
         let allFunds = [];
         let fciDate = "";
 
         for (let i = 0; i < fciCategories.length; i++) {
           const ultimoRaw = Array.isArray(ultimoResults[i])    ? ultimoResults[i]    : [];
           const penultRaw = Array.isArray(penultimoResults[i]) ? penultimoResults[i] : [];
-          // Normalizar: prod devuelve { date, data[] }, dev (Vite proxy) devuelve array directo
-          const toArr = r => Array.isArray(r) ? r : (r?.data || []);
-          const hist30d  = toArr(histResults[i * 3]);
-          const histYtd  = toArr(histResults[i * 3 + 1]);
-          const hist365d = toArr(histResults[i * 3 + 2]);
 
-          // Mapas para lookup rápido por nombre de fondo
-          const prevMap  = {}, map30d = {}, mapYtd = {}, map365d = {};
-          penultRaw.forEach(f => { if (f.fondo && f.vcp) prevMap[f.fondo]  = parseFloat(f.vcp); });
-          hist30d.forEach(f  => { if (f.fondo && f.vcp) map30d[f.fondo]   = parseFloat(f.vcp); });
-          histYtd.forEach(f  => { if (f.fondo && f.vcp) mapYtd[f.fondo]   = parseFloat(f.vcp); });
-          hist365d.forEach(f => { if (f.fondo && f.vcp) map365d[f.fondo]  = parseFloat(f.vcp); });
+          // Mapa VCP del día anterior para calcular rend_diario real
+          const prevMap = {};
+          penultRaw.forEach(f => { if (f.fondo && f.vcp) prevMap[f.fondo] = parseFloat(f.vcp); });
 
           const funds = ultimoRaw
             .filter(f => f.fondo && f.vcp)
             .map(f => {
               const vcpNow  = parseFloat(f.vcp);
               const vcpPrev = prevMap[f.fondo];
-              const vcp30d  = map30d[f.fondo];
-              const vcpYtd  = mapYtd[f.fondo];
-              const vcp365d = map365d[f.fondo];
 
-              // Rendimiento diario real: (VCP_hoy / VCP_ayer) - 1
+              // Rendimiento diario real desde VCP: (hoy / ayer) - 1
               const rDaily = (vcpPrev && vcpNow > 0) ? (vcpNow / vcpPrev) - 1 : null;
               const tea    = rDaily != null ? (Math.pow(1 + rDaily, 365) - 1) * 100 : null;
-              const rend_diario  = rDaily != null ? rDaily * 100 : null;
-              const rend_mensual = (vcp30d  && vcpNow > 0) ? ((vcpNow / vcp30d)  - 1) * 100 : null;
-              const rend_ytd     = (vcpYtd  && vcpNow > 0) ? ((vcpNow / vcpYtd)  - 1) * 100 : null;
-              const rend_anual   = (vcp365d && vcpNow > 0) ? ((vcpNow / vcp365d) - 1) * 100 : null;
+              const rend_diario = rDaily != null ? rDaily * 100 : null;
 
-              // Sparkline con VCP reales (5 puntos), fallback a simulación
-              const realHistory = [vcp365d, vcpYtd, vcp30d, vcpPrev, vcpNow].filter(Boolean);
+              // Proyecciones compuestas desde rend_diario (práctica estándar del mercado)
+              const rend_mensual = rDaily != null ? (Math.pow(1 + rDaily, 30)       - 1) * 100 : null;
+              const rend_ytd     = rDaily != null ? (Math.pow(1 + rDaily, daysYtd)  - 1) * 100 : null;
+              const rend_anual   = tea; // TEA = proyección a 365 días
+
               const seed = f.fondo.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-              const history = realHistory.length >= 3 ? realHistory : buildHistory(seed, tea ?? 68);
+              // Sparkline: usar VCP real de hoy y ayer; completar con proyección
+              const history = vcpPrev
+                ? buildHistory(seed, tea ?? 68).map((v, i, arr) =>
+                    i === arr.length - 1 ? vcpNow : i === arr.length - 2 ? vcpPrev : v
+                  )
+                : buildHistory(seed, tea ?? 68);
 
               return {
                 fondo: f.fondo,
@@ -222,7 +201,6 @@ export default function App() {
                 type: fciCategories[i].type,
                 rend_diario, tea, rend_mensual, rend_ytd, rend_anual,
                 history,
-                histReal: realHistory.length >= 3,
               };
             });
 
@@ -516,11 +494,11 @@ export default function App() {
                       <th style={{ ...S.th, minWidth: 200 }}>Fondo</th>
                       <th style={S.th}>Tipo</th>
                       <th style={S.th}>Liq.</th>
-                      <SortTh label="Diario" field="rend_diario" current={fciSort} dir={fciSortDir} onSort={handleSort} align="right" />
-                      <SortTh label="TEA"    field="tea"         current={fciSort} dir={fciSortDir} onSort={handleSort} align="right" />
-                      <SortTh label="30D"    field="rend_mensual" current={fciSort} dir={fciSortDir} onSort={handleSort} align="right" />
-                      <SortTh label="YTD"    field="rend_ytd"    current={fciSort} dir={fciSortDir} onSort={handleSort} align="right" />
-                      <SortTh label="1 AÑO"  field="rend_anual"  current={fciSort} dir={fciSortDir} onSort={handleSort} align="right" />
+                      <SortTh label="Diario"  field="rend_diario"  current={fciSort} dir={fciSortDir} onSort={handleSort} align="right" />
+                      <SortTh label="TEA"     field="tea"          current={fciSort} dir={fciSortDir} onSort={handleSort} align="right" />
+                      <SortTh label="30D ~"   field="rend_mensual" current={fciSort} dir={fciSortDir} onSort={handleSort} align="right" />
+                      <SortTh label="YTD ~"   field="rend_ytd"     current={fciSort} dir={fciSortDir} onSort={handleSort} align="right" />
+                      <SortTh label="1 AÑO ~" field="rend_anual"   current={fciSort} dir={fciSortDir} onSort={handleSort} align="right" />
                       <th style={{ ...S.th, textAlign: "center" }}>Tendencia</th>
                       <th style={{ ...S.th, textAlign: "right" }}>IA</th>
                     </tr>
@@ -590,9 +568,8 @@ export default function App() {
 
             {!fciLoading && filteredFci.length > 0 && (
               <div style={{ marginTop: 10, fontSize: 11, color: "#64748b", textAlign: "right", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span>
-                  {fci?.funds?.filter(f => f.histReal).length || 0} fondos con histórico real ·{" "}
-                  {fci?.funds?.filter(f => !f.histReal).length || 0} sin historial suficiente
+                <span style={{ color: "#475569" }}>
+                  ~ Proyectado desde rend. diario real · Diario y TEA calculados desde VCP
                 </span>
                 <span>{filteredFci.length} fondos · datos al {fci?.date}</span>
               </div>
