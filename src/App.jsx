@@ -147,22 +147,27 @@ export default function App() {
         const dYtd = new Date(todayD.getFullYear() - 1, 11, 31); // 31-dic año anterior
         const d365 = new Date(todayD); d365.setDate(todayD.getDate() - 365);
 
-        // Fetch último + penúltimo para todas las categorías
+        // Fetch último + penúltimo para todas las categorías en paralelo
         const [ultimoResults, penultimoResults] = await Promise.all([
           Promise.all(fciCategories.map(c =>
-            fetch(`${BASE}/${c.path}/ultimo`, { signal }).then(r => r.ok ? r.json() : []).catch(() => [])
+            fetch(`${BASE}/${c.path}/ultimo`, { signal })
+              .then(r => r.ok ? r.json() : []).catch(() => [])
           )),
           Promise.all(fciCategories.map(c =>
-            fetch(`/api/fci-penultimo?tipo=${c.path}`, { signal }).then(r => r.ok ? r.json() : []).catch(() => [])
+            fetch(`/api/fci-penultimo?tipo=${c.path}`, { signal })
+              .then(r => r.ok ? r.json() : []).catch(() => [])
           )),
         ]);
 
-        // Fetch histórico via proxy (30d, YTD, 1Y) para las 5 categorías en paralelo
+        // Fetch histórico via Serverless Function (30d, YTD, 1Y) — devuelve { date, data[] }
         const histResults = await Promise.all(
           fciCategories.flatMap(c => [
-            fetch(`/api/fci-history?tipo=${c.path}&fecha=${fmtDate(d30)}`,  { signal }).then(r => r.ok ? r.json() : []).catch(() => []),
-            fetch(`/api/fci-history?tipo=${c.path}&fecha=${fmtDate(dYtd)}`, { signal }).then(r => r.ok ? r.json() : []).catch(() => []),
-            fetch(`/api/fci-history?tipo=${c.path}&fecha=${fmtDate(d365)}`, { signal }).then(r => r.ok ? r.json() : []).catch(() => []),
+            fetch(`/api/fci-history?tipo=${c.path}&fecha=${fmtDate(d30)}`,  { signal })
+              .then(r => r.ok ? r.json() : { data: [] }).catch(() => ({ data: [] })),
+            fetch(`/api/fci-history?tipo=${c.path}&fecha=${fmtDate(dYtd)}`, { signal })
+              .then(r => r.ok ? r.json() : { data: [] }).catch(() => ({ data: [] })),
+            fetch(`/api/fci-history?tipo=${c.path}&fecha=${fmtDate(d365)}`, { signal })
+              .then(r => r.ok ? r.json() : { data: [] }).catch(() => ({ data: [] })),
           ])
         );
 
@@ -170,11 +175,12 @@ export default function App() {
         let fciDate = "";
 
         for (let i = 0; i < fciCategories.length; i++) {
-          const ultimoRaw   = Array.isArray(ultimoResults[i])   ? ultimoResults[i]   : [];
-          const penultRaw   = Array.isArray(penultimoResults[i]) ? penultimoResults[i] : [];
-          const hist30d     = Array.isArray(histResults[i * 3])     ? histResults[i * 3]     : [];
-          const histYtd     = Array.isArray(histResults[i * 3 + 1]) ? histResults[i * 3 + 1] : [];
-          const hist365d    = Array.isArray(histResults[i * 3 + 2]) ? histResults[i * 3 + 2] : [];
+          const ultimoRaw = Array.isArray(ultimoResults[i])    ? ultimoResults[i]    : [];
+          const penultRaw = Array.isArray(penultimoResults[i]) ? penultimoResults[i] : [];
+          // fci-history devuelve { date, data[] } — extraer .data
+          const hist30d   = histResults[i * 3]?.data     || [];
+          const histYtd   = histResults[i * 3 + 1]?.data || [];
+          const hist365d  = histResults[i * 3 + 2]?.data || [];
 
           // Mapas para lookup rápido por nombre de fondo
           const prevMap  = {}, map30d = {}, mapYtd = {}, map365d = {};
