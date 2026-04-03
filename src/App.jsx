@@ -177,10 +177,11 @@ export default function App() {
         for (let i = 0; i < fciCategories.length; i++) {
           const ultimoRaw = Array.isArray(ultimoResults[i])    ? ultimoResults[i]    : [];
           const penultRaw = Array.isArray(penultimoResults[i]) ? penultimoResults[i] : [];
-          // fci-history devuelve { date, data[] } — extraer .data
-          const hist30d   = histResults[i * 3]?.data     || [];
-          const histYtd   = histResults[i * 3 + 1]?.data || [];
-          const hist365d  = histResults[i * 3 + 2]?.data || [];
+          // Normalizar: prod devuelve { date, data[] }, dev (Vite proxy) devuelve array directo
+          const toArr = r => Array.isArray(r) ? r : (r?.data || []);
+          const hist30d  = toArr(histResults[i * 3]);
+          const histYtd  = toArr(histResults[i * 3 + 1]);
+          const hist365d = toArr(histResults[i * 3 + 2]);
 
           // Mapas para lookup rápido por nombre de fondo
           const prevMap  = {}, map30d = {}, mapYtd = {}, map365d = {};
